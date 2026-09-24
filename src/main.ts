@@ -3,12 +3,25 @@ import {
   Editor,
   MarkdownPostProcessorContext,
   MarkdownRenderChild,
+  Notice,
   Plugin,
   PluginSettingTab,
   Setting,
+  TFile,
 } from "obsidian";
 import { morphLivePreview } from "./livepreview";
-import { createMorph, Defaults, FILTER_ID, MorphHandle, parseBlock, parseSpec, Style, STYLE_LABELS, STYLES } from "./morph";
+import {
+  createMorph,
+  Defaults,
+  FILTER_ID,
+  MorphHandle,
+  parseBlock,
+  parseSpec,
+  rewriteMorphSeparators,
+  Style,
+  STYLE_LABELS,
+  STYLES,
+} from "./morph";
 
 interface MorphSettings extends Defaults {
   /** master switch for morphing note titles */
@@ -21,6 +34,7 @@ interface MorphSettings extends Defaults {
   titleExplorer: boolean;
   /** separator used inside file names ("|" is not allowed in file names) */
   titleSeparator: string;
+  rewriteOnSeparatorChange: boolean;
 }
 
 const DEFAULTS: MorphSettings = {
@@ -33,6 +47,7 @@ const DEFAULTS: MorphSettings = {
   titleHeader: true,
   titleExplorer: true,
   titleSeparator: ";",
+  rewriteOnSeparatorChange: true,
 };
 
 const INLINE_TITLE_SEL = ".inline-title";
@@ -61,10 +76,15 @@ export default class MorphTextPlugin extends Plugin {
   /** title elements currently showing morph text */
   private titles = new Map<HTMLElement, TitleState>();
   private titleTimer = 0;
+  private appliedSeparator = DEFAULTS.separator;
+  private appliedTitleSeparator = DEFAULTS.titleSeparator;
+  private rewriting = false;
 
   async onload() {
     Object.assign(this.settings, await this.loadData());
     if (!(STYLES as readonly string[]).includes(this.settings.style)) this.settings.style = "morph";
+    this.appliedSeparator = this.settings.separator;
+    this.appliedTitleSeparator = this.settings.titleSeparator;
     this.installFilter();
 
     // Reading view: inline {~ a | b ~}
@@ -112,6 +132,86 @@ export default class MorphTextPlugin extends Plugin {
     window.clearTimeout(this.titleTimer);
     this.restoreAllTitles();
     this.svg?.remove();
+  }
+
+  async flushSeparatorRewrite() {
+    if (this.rewriting) return;
+    this.rewriting = true;
+    try {
+      await this.runSeparatorRewrite();
+    } finally {
+      this.rewriting = false;
+    }
+  }
+
+  private async runSeparatorRewrite() {
+    const s = this.settings;
+    const notesFrom = this.appliedSeparator;
+    const notesTo = s.separator;
+    const titlesFrom = this.appliedTitleSeparator;
+    const titlesTo = s.titleSeparator;
+
+    if (!s.rewriteOnSeparatorChange) {
+      this.appliedSeparator = notesTo;
+      this.appliedTitleSeparator = titlesTo;
+      return;
+    }
+
+    let notes = 0;
+    let titles = 0;
+    if (notesFrom && notesTo && notesFrom !== notesTo) {
+      notes = await this.rewriteNoteSeparators(notesFrom, notesTo);
+    }
+    if (titlesFrom && titlesTo && titlesFrom !== titlesTo) {
+      titles = await this.rewriteTitleSeparators(titlesFrom, titlesTo);
+    }
+
+    this.appliedSeparator = notesTo;
+    this.appliedTitleSeparator = titlesTo;
+
+    if (notes || titles) {
+      const parts: string[] = [];
+      if (notes) parts.push(`${notes} note${notes === 1 ? "" : "s"}`);
+      if (titles) parts.push(`${titles} title${titles === 1 ? "" : "s"}`);
+      new Notice(`Updated morph separators in ${parts.join(" and ")}.`);
+    }
+  }
+
+  private async rewriteNoteSeparators(from: string, to: string): Promise<number> {
+    let changed = 0;
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      const data = await this.app.vault.read(file);
+      const next = rewriteMorphSeparators(data, from, to);
+      if (next === data) continue;
+      await this.app.vault.modify(file, next);
+      changed++;
+    }
+    return changed;
+  }
+
+  private async rewriteTitleSeparators(from: string, to: string): Promise<number> {
+    const items = this.app.vault.getAllLoadedFiles().slice();
+    items.sort((a, b) => b.path.split("/").length - a.path.split("/").length || b.path.length - a.path.length);
+
+    let changed = 0;
+    for (const item of items) {
+      const nextName = rewriteMorphSeparators(item.name, from, to);
+      if (nextName === item.name) continue;
+      const parent = item.parent?.path ?? "";
+      const dest = parent ? `${parent}/${nextName}` : nextName;
+      if (this.app.vault.getAbstractFileByPath(dest)) {
+        new Notice(`Skipped rename: ${dest} already exists.`);
+        continue;
+      }
+      try {
+        if (item instanceof TFile) await this.app.fileManager.renameFile(item, dest);
+        else await this.app.vault.rename(item, dest);
+        changed++;
+      } catch {
+        new Notice(`Could not rename ${item.path}.`);
+      }
+    }
+    return changed;
   }
 
   async saveSettings() {
@@ -318,6 +418,8 @@ class MorphSettingTab extends PluginSettingTab {
   }
 
   hide() {
+    const active = this.containerEl.ownerDocument.activeElement;
+    if (active instanceof HTMLElement && this.containerEl.contains(active)) active.blur();
     this.preview?.destroy();
     this.preview = undefined;
   }
@@ -370,14 +472,24 @@ class MorphSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Morphemes separator")
       .setDesc("Symbol to separate morphemes.")
-      .addText((t) =>
-        t
-          .setValue(this.plugin.settings.separator)
-          .setPlaceholder("Enter separator...")
-          .onChange(async (v) => {
-            this.plugin.settings.separator = v;
-            await this.plugin.saveSettings();
-          })
+      .addText((t) => {
+        t.setValue(this.plugin.settings.separator).setPlaceholder("Enter separator...");
+        this.commitTextOnLeave(t.inputEl, async (v) => {
+          if (this.plugin.settings.separator === v) return;
+          this.plugin.settings.separator = v;
+          await this.plugin.saveSettings();
+          await this.plugin.flushSeparatorRewrite();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Rewrite on separator change")
+      .setDesc("Replace the old separator inside existing {~ … ~} constructs across the vault (notes and titles).")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.rewriteOnSeparatorChange).onChange(async (v) => {
+          this.plugin.settings.rewriteOnSeparatorChange = v;
+          await this.plugin.saveSettings();
+        })
       );
 
     new Setting(containerEl).setName("Titles").setHeading();
@@ -429,16 +541,16 @@ class MorphSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Morphemes separator")
       .setDesc('Used inside file names, where some symbols are not allowed.')
-      .addText((t) =>
-        t
-          .setValue(this.plugin.settings.titleSeparator)
-          .setPlaceholder(";")
-          .onChange(async (v) => {
-            this.plugin.settings.titleSeparator = v;
-            await this.plugin.saveSettings();
-            this.plugin.refreshTitles();
-          })
-      );
+      .addText((t) => {
+        t.setValue(this.plugin.settings.titleSeparator).setPlaceholder(";");
+        this.commitTextOnLeave(t.inputEl, async (v) => {
+          if (this.plugin.settings.titleSeparator === v) return;
+          this.plugin.settings.titleSeparator = v;
+          await this.plugin.saveSettings();
+          this.plugin.refreshTitles();
+          await this.plugin.flushSeparatorRewrite();
+        });
+      });
 
     new Setting(containerEl).setName("Preview").setHeading();
     const box = containerEl.createDiv({ cls: "morph-block" });
@@ -447,6 +559,14 @@ class MorphSettingTab extends PluginSettingTab {
       this.plugin.settings
     );
     box.appendChild(this.preview.el);
+  }
+
+  private commitTextOnLeave(input: HTMLInputElement, apply: (value: string) => void | Promise<void>) {
+    const commit = () => void apply(input.value);
+    input.addEventListener("blur", commit);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") input.blur();
+    });
   }
 
   private updatePreview() {

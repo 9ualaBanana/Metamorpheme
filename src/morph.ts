@@ -81,6 +81,14 @@ export function parseSpec(raw: string, separator: string): Spec {
   return spec;
 }
 
+export function rewriteMorphSeparators(text: string, oldSep: string, newSep: string): string {
+  if (!oldSep || oldSep === newSep) return text;
+  return text.replace(/\{~(.+?)~\}/g, (full, inner: string) => {
+    if (!inner.includes(oldSep)) return full;
+    return `{~${inner.split(oldSep).join(newSep)}~}`;
+  });
+}
+
 /** Fenced-block form: one word per line, optional first line of options. */
 export function parseBlock(src: string, separator: string): Spec {
   const lines = src.split("\n").map((l) => l.trim()).filter(Boolean);
