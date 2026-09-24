@@ -1,9 +1,14 @@
 {
   "id": "sememes",
   "name": "sememes",
+  "description": "Superpose meanings. Let the words breathe.",
   "version": "1.1.0",
   "minAppVersion": "1.4.0",
-  "description": "Superpose meanings. Let the words breathe.",
+  "isDesktopOnly": false,
+
   "author": "whö/h!m",
-  "isDesktopOnly": false
+  "authorUrl": "https://github.com/9ualaBanana",
+  "fundingUrl": {
+    "Buy Me a Coffee": "https://buymeacoffee.com/gualabanana"
+  }
 }
