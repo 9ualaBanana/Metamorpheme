@@ -327,11 +327,9 @@ class MorphSettingTab extends PluginSettingTab {
     this.hide();
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "Morph Text Settings" });
-
     new Setting(containerEl)
-      .setName("Fade style")
-      .setDesc("Default transition between words. Override per set with style=slide (or any style below).")
+      .setName("Metamorphosis style")
+      .setDesc("Default metamorphosis animation.")
       .addDropdown((dd) => {
         for (const s of STYLES) dd.addOption(s, STYLE_LABELS[s]);
         dd.setValue(this.plugin.settings.style).onChange(async (v) => {
@@ -342,28 +340,12 @@ class MorphSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("Default hold time")
-      .setDesc("Seconds a word stays fully visible before the next one starts fading in.")
-      .addSlider((s) =>
-        s
-          .setLimits(0.2, 10, 0.1)
-          .setValue(this.plugin.settings.hold)
-          .setDynamicTooltip()
-          .onChange(async (v) => {
-            this.plugin.settings.hold = v;
-            await this.plugin.saveSettings();
-            this.updatePreview();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Default fade time")
-      .setDesc("Seconds the morph into the next word takes.")
+      .setName("Metamorphosis duration")
+      .setDesc("Interval in seconds during which metamorphosis takes place.")
       .addSlider((s) =>
         s
           .setLimits(0.1, 5, 0.1)
           .setValue(this.plugin.settings.fade)
-          .setDynamicTooltip()
           .onChange(async (v) => {
             this.plugin.settings.fade = v;
             await this.plugin.saveSettings();
@@ -372,8 +354,22 @@ class MorphSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Separator")
-      .setDesc("Symbol to separate words.")
+      .setName("No metamorphosis duration")
+      .setDesc("Interval in seconds during which morpheme stays visible before metamorphosis takes place.")
+      .addSlider((s) =>
+        s
+          .setLimits(0.2, 10, 0.1)
+          .setValue(this.plugin.settings.hold)
+          .onChange(async (v) => {
+            this.plugin.settings.hold = v;
+            await this.plugin.saveSettings();
+            this.updatePreview();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Morphemes separator")
+      .setDesc("Symbol to separate morphemes.")
       .addText((t) =>
         t
           .setValue(this.plugin.settings.separator)
@@ -384,11 +380,11 @@ class MorphSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl).setName("Note titles").setHeading();
+    new Setting(containerEl).setName("Titles").setHeading();
 
     new Setting(containerEl)
       .setName("Morph note titles")
-      .setDesc("A file named  Say {~ Mean ; Do ; Ship ~}  morphs in its title.")
+      .setDesc("Master switch for morphing note titles.")
       .addToggle((t) =>
         t.setValue(this.plugin.settings.morphTitles).onChange(async (v) => {
           this.plugin.settings.morphTitles = v;
@@ -398,8 +394,8 @@ class MorphSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Inline title")
-      .setDesc("The large title at the top of the note.")
+      .setName("Editor")
+      .setDesc("The title at the top of the note editor.")
       .addToggle((t) =>
         t.setValue(this.plugin.settings.titleInline).onChange(async (v) => {
           this.plugin.settings.titleInline = v;
@@ -409,7 +405,7 @@ class MorphSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Tab and header titles")
+      .setName("Tab & Header")
       .setDesc("The title shown in the tab and in the note header.")
       .addToggle((t) =>
         t.setValue(this.plugin.settings.titleHeader).onChange(async (v) => {
@@ -431,8 +427,8 @@ class MorphSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Title separator")
-      .setDesc('Used inside file names, where "|" is not allowed. Per-word timing is limited to @hold (no "/"); use hold=, fade= and style= in the first segment.')
+      .setName("Morphemes separator")
+      .setDesc('Used inside file names, where some symbols are not allowed.')
       .addText((t) =>
         t
           .setValue(this.plugin.settings.titleSeparator)
