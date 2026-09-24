@@ -10,7 +10,34 @@ import {
 import { morphLivePreview } from "./livepreview";
 import { createMorph, Defaults, FILTER_ID, MorphHandle, parseBlock, parseSpec, Style, STYLE_LABELS, STYLES } from "./morph";
 
-const DEFAULTS: Defaults = { hold: 2, fade: 1, style: "morph", separator: " | " };
+interface MorphSettings extends Defaults {
+  /** master switch for morphing note titles */
+  morphTitles: boolean;
+  /** morph the big inline title at the top of a note */
+  titleInline: boolean;
+  /** morph the tab title and the view-header title */
+  titleHeader: boolean;
+  /** morph file and folder names in the file explorer */
+  titleExplorer: boolean;
+  /** separator used inside file names ("|" is not allowed in file names) */
+  titleSeparator: string;
+}
+
+const DEFAULTS: MorphSettings = {
+  hold: 2,
+  fade: 1,
+  style: "morph",
+  separator: " | ",
+  morphTitles: true,
+  titleInline: true,
+  titleHeader: true,
+  titleExplorer: true,
+  titleSeparator: ";",
+};
+
+const INLINE_TITLE_SEL = ".inline-title";
+const HEADER_TITLE_SEL = ".view-header-title, .workspace-tab-header-inner-title";
+const EXPLORER_SEL = ".nav-file-title-content, .nav-folder-title-content";
 
 class MorphChild extends MarkdownRenderChild {
   constructor(el: HTMLElement, private cleanup: () => void) {
@@ -21,9 +48,19 @@ class MorphChild extends MarkdownRenderChild {
   }
 }
 
+interface TitleState {
+  /** the file name text exactly as Obsidian had it */
+  raw: string;
+  handles: MorphHandle[];
+}
+
 export default class MorphTextPlugin extends Plugin {
-  settings: Defaults = { ...DEFAULTS };
+  settings: MorphSettings = { ...DEFAULTS };
   private svg?: SVGSVGElement;
+
+  /** title elements currently showing morph text */
+  private titles = new Map<HTMLElement, TitleState>();
+  private titleTimer = 0;
 
   async onload() {
     Object.assign(this.settings, await this.loadData());
@@ -67,9 +104,13 @@ export default class MorphTextPlugin extends Plugin {
     });
 
     this.addSettingTab(new MorphSettingTab(this.app, this));
+
+    this.setupTitles();
   }
 
   onunload() {
+    window.clearTimeout(this.titleTimer);
+    this.restoreAllTitles();
     this.svg?.remove();
   }
 
@@ -92,39 +133,171 @@ export default class MorphTextPlugin extends Plugin {
     this.svg = svg;
   }
 
-  private renderInText(node: Text, ctx: MarkdownPostProcessorContext) {
-    const text = node.nodeValue ?? "";
+  /** Splits text around {~ ... ~} and returns a fragment with morph elements in place. */
+  private buildFragment(text: string, sep: string): { frag: DocumentFragment; handles: MorphHandle[] } | null {
     const re = /\{~(.+?)~\}/g;
     const frag = document.createDocumentFragment();
+    const handles: MorphHandle[] = [];
     let last = 0;
-    let any = false;
     let m: RegExpExecArray | null;
     while ((m = re.exec(text))) {
-      const spec = parseSpec(m[1], this.settings.separator);
+      const spec = parseSpec(m[1], sep);
       if (!spec.items.length) continue;
-      any = true;
       frag.append(text.slice(last, m.index));
-      const { el, destroy } = createMorph(spec, this.settings);
-      frag.append(el);
-      ctx.addChild(new MorphChild(el, destroy));
+      const handle = createMorph(spec, this.settings);
+      frag.append(handle.el);
+      handles.push(handle);
       last = m.index + m[0].length;
     }
-    if (!any) return;
+    if (!handles.length) return null;
     frag.append(text.slice(last));
-    node.replaceWith(frag);
+    return { frag, handles };
   }
 
+  private renderInText(node: Text, ctx: MarkdownPostProcessorContext) {
+    const built = this.buildFragment(node.nodeValue ?? "", this.settings.separator);
+    if (!built) return;
+    built.handles.forEach((h) => ctx.addChild(new MorphChild(h.el, h.destroy)));
+    node.replaceWith(built.frag);
+  }
+
+  // ───────────────────────── note titles ─────────────────────────
+  //
+  // A note named  "Say {~ Mean ; Do ; Ship ~}"  shows morphing text in its title.
+  // File names cannot contain "|" (or "/" and ":"), so titles use their own separator
+  // (default ";") and per-word timing is limited to "@hold" — use hold= / fade= / style=
+  // in the first segment for the rest.
+
+  private setupTitles() {
+    const schedule = (delay = 120) => {
+      window.clearTimeout(this.titleTimer);
+      this.titleTimer = window.setTimeout(() => this.scanTitles(), delay);
+    };
+
+    this.registerEvent(this.app.workspace.on("layout-change", () => schedule()));
+    this.registerEvent(this.app.workspace.on("active-leaf-change", () => schedule()));
+    this.registerEvent(this.app.workspace.on("file-open", () => schedule()));
+    this.registerEvent(this.app.vault.on("rename", () => schedule()));
+    this.app.workspace.onLayoutReady(() => schedule());
+
+    // Obsidian re-renders titles on its own schedule; this cheap rescan is the safety net.
+    // (The file explorer can be huge, so it is handled by the observer below instead.)
+    this.registerInterval(window.setInterval(() => this.scanTitles(false), 2000));
+
+    // File explorer: rows appear when folders expand, sort or filter, so watch for them.
+    const explorerObserver = new MutationObserver((records) => {
+      const relevant = records.some((r) => {
+        const el = r.target instanceof Element ? r.target : r.target.parentElement;
+        return !!el && !el.closest(".morph-text") && !!el.closest('[data-type="file-explorer"]');
+      });
+      if (relevant) schedule(100);
+    });
+    this.app.workspace.onLayoutReady(() =>
+      explorerObserver.observe(this.app.workspace.containerEl, { childList: true, subtree: true })
+    );
+    this.register(() => explorerObserver.disconnect());
+
+    // Editing a title: show the real file name while focused, morph again afterwards.
+    this.registerDomEvent(document, "focusin", (e: FocusEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      for (const el of this.titles.keys()) {
+        if (el === target || el.contains(target)) {
+          this.restoreTitle(el, true);
+          break;
+        }
+      }
+    });
+    this.registerDomEvent(document, "focusout", () => schedule(400));
+  }
+
+  /** Decorates every title element whose text contains {~ ... ~}. */
+  scanTitles(withExplorer = true) {
+    for (const [el, st] of this.titles) {
+      if (!el.isConnected) {
+        st.handles.forEach((h) => h.destroy());
+        this.titles.delete(el);
+      }
+    }
+
+    const s = this.settings;
+    if (!s.morphTitles) return;
+
+    const targets: HTMLElement[] = [];
+    if (s.titleInline) targets.push(...Array.from(document.querySelectorAll<HTMLElement>(INLINE_TITLE_SEL)));
+    if (s.titleHeader) targets.push(...Array.from(document.querySelectorAll<HTMLElement>(HEADER_TITLE_SEL)));
+    if (s.titleExplorer && withExplorer) {
+      targets.push(...Array.from(document.querySelectorAll<HTMLElement>(EXPLORER_SEL)));
+    }
+    targets.forEach((el) => this.decorateTitle(el));
+  }
+
+  private decorateTitle(el: HTMLElement) {
+    const existing = this.titles.get(el);
+    if (existing) {
+      const first = existing.handles[0]?.el;
+      if (first && first.isConnected && el.contains(first)) return; // still ours
+      // Obsidian rewrote the element (rename, file switch): drop the stale state
+      existing.handles.forEach((h) => h.destroy());
+      this.titles.delete(el);
+    }
+
+    if (el.contains(document.activeElement)) return; // being edited right now
+
+    const raw = el.textContent ?? "";
+    if (!raw.includes("{~")) return;
+
+    const built = this.buildFragment(raw, this.settings.titleSeparator || ";");
+    if (!built) return;
+
+    el.empty();
+    el.appendChild(built.frag);
+    this.titles.set(el, { raw, handles: built.handles });
+  }
+
+  private restoreTitle(el: HTMLElement, placeCaret = false) {
+    const st = this.titles.get(el);
+    if (!st) return;
+    st.handles.forEach((h) => h.destroy());
+    this.titles.delete(el);
+    el.textContent = st.raw;
+
+    if (placeCaret && el.isContentEditable) {
+      const sel = window.getSelection();
+      if (sel) {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    }
+  }
+
+  private restoreAllTitles() {
+    for (const el of Array.from(this.titles.keys())) this.restoreTitle(el);
+  }
+
+  /** Call after any title-related setting changes. */
+  refreshTitles() {
+    this.restoreAllTitles();
+    this.scanTitles();
+  }
+
+  // ───────────────────────── commands ─────────────────────────
+
   private insertInline(editor: Editor) {
+    const sep = this.settings.separator.trim() || "|";
     const sel = editor.getSelection();
     if (sel) {
-      const parts = (sel.includes("\n") ? sel.split("\n") : sel.includes(this.settings.separator) ? sel.split(this.settings.separator) : sel.split(","))
+      const parts = (sel.includes("\n") ? sel.split("\n") : sel.includes(sep) ? sel.split(sep) : sel.split(","))
         .map((s) => s.trim())
         .filter(Boolean);
-      editor.replaceSelection(`{~ ${parts.join(` ${this.settings.separator} `)} ~}`);
+      editor.replaceSelection(`{~ ${parts.join(` ${sep} `)} ~}`);
       return;
     }
     const from = editor.getCursor("from");
-    editor.replaceSelection(`{~  ${this.settings.separator} ~}`);
+    editor.replaceSelection(`{~  ${sep} ~}`);
     editor.setCursor({ line: from.line, ch: from.ch + 3 });
   }
 
@@ -197,7 +370,7 @@ class MorphSettingTab extends PluginSettingTab {
             this.updatePreview();
           })
       );
-      
+
     new Setting(containerEl)
       .setName("Separator")
       .setDesc("Symbol to separate words.")
@@ -208,6 +381,66 @@ class MorphSettingTab extends PluginSettingTab {
           .onChange(async (v) => {
             this.plugin.settings.separator = v;
             await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl).setName("Note titles").setHeading();
+
+    new Setting(containerEl)
+      .setName("Morph note titles")
+      .setDesc("A file named  Say {~ Mean ; Do ; Ship ~}  morphs in its title.")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.morphTitles).onChange(async (v) => {
+          this.plugin.settings.morphTitles = v;
+          await this.plugin.saveSettings();
+          this.plugin.refreshTitles();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Inline title")
+      .setDesc("The large title at the top of the note.")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.titleInline).onChange(async (v) => {
+          this.plugin.settings.titleInline = v;
+          await this.plugin.saveSettings();
+          this.plugin.refreshTitles();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Tab and header titles")
+      .setDesc("The title shown in the tab and in the note header.")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.titleHeader).onChange(async (v) => {
+          this.plugin.settings.titleHeader = v;
+          await this.plugin.saveSettings();
+          this.plugin.refreshTitles();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("File explorer")
+      .setDesc("File and folder names in the sidebar.")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.titleExplorer).onChange(async (v) => {
+          this.plugin.settings.titleExplorer = v;
+          await this.plugin.saveSettings();
+          this.plugin.refreshTitles();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Title separator")
+      .setDesc('Used inside file names, where "|" is not allowed. Per-word timing is limited to @hold (no "/"); use hold=, fade= and style= in the first segment.')
+      .addText((t) =>
+        t
+          .setValue(this.plugin.settings.titleSeparator)
+          .setPlaceholder(";")
+          .onChange(async (v) => {
+            this.plugin.settings.titleSeparator = v;
+            await this.plugin.saveSettings();
+            this.plugin.refreshTitles();
           })
       );
 
