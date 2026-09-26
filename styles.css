@@ -2,11 +2,7 @@
 .morph-text {
   display: inline-grid;
   vertical-align: baseline;
-}
-
-/* only the liquid style uses the SVG threshold filter */
-.morph-text[data-style="morph"] {
-  filter: url(#obsidian-morph-threshold) blur(0.6px);
+  pointer-events: none;
 }
 
 .morph-word {
@@ -15,6 +11,20 @@
   white-space: nowrap;
   opacity: 0;
   will-change: filter, opacity, transform;
+  pointer-events: none;
+}
+
+.morph-word a,
+.morph-word .internal-link,
+.morph-word .external-link {
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
+}
+
+.morph-word p {
+  display: inline;
+  margin: 0;
 }
 
 .morph-block {

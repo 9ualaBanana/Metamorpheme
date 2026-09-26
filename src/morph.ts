@@ -35,7 +35,10 @@ export interface Spec {
 
 export interface MorphHandle {
   el: HTMLElement;
+  itemEls: HTMLElement[];
   destroy: () => void;
+  captureContent: () => void;
+  refresh: () => void;
 }
 
 export const FILTER_ID = "obsidian-morph-threshold";
@@ -102,16 +105,23 @@ function reducedMotion(): boolean {
 /** f = how visible the word is (0..1); incoming = true for the word appearing. */
 function apply(style: Style, span: HTMLElement, f: number, incoming: boolean) {
   const s = span.style;
+  const hasLink = !!span.querySelector("a");
   s.filter = "none";
   s.transform = "none";
+  s.pointerEvents = f > 0.35 ? "auto" : "none";
   if (f <= 0.001) {
     s.opacity = "0";
+    return;
+  }
+  if (hasLink) {
+    s.opacity = String(style === "morph" ? Math.pow(f, 0.4) : f);
     return;
   }
   switch (style) {
     case "morph": {
       const blur = Math.min(8 / f - 8, 100);
-      if (blur > 0.01) s.filter = `blur(${blur}px)`;
+      const extra = blur > 0.01 ? blur : 0.6;
+      s.filter = `url(#${FILTER_ID}) blur(${extra}px)`;
       s.opacity = String(Math.pow(f, 0.4));
       break;
     }
@@ -158,6 +168,15 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
   el.setAttribute("aria-label", spec.items.map((i) => i.text).join(", "));
   const justify = spec.align === "left" ? "start" : spec.align === "right" ? "end" : "center";
   el.style.setProperty("--morph-justify", justify);
+  el.addEventListener("click", (e) => {
+    const t = e.target;
+    if (!(t instanceof Element) || t.closest("a")) return;
+    const a = t.closest(".morph-word")?.querySelector("a");
+    if (!a) return;
+    e.preventDefault();
+    e.stopPropagation();
+    a.click();
+  });
 
   const spans = spec.items.map((it) => {
     const s = document.createElement("span");
@@ -170,7 +189,6 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
 
   const n = spans.length;
   const reduced = reducedMotion();
-  // read live, so changing the default style in settings applies at the next transition
   const style = (): Style => (reduced ? "crossfade" : spec.style ?? d.style ?? "morph");
   const holdMs = (k: number) => Math.max(0, spec.items[k].hold ?? spec.hold ?? d.hold) * 1000;
   const fadeMs = (k: number) => Math.max(0.05, spec.items[k].fade ?? spec.fade ?? d.fade) * 1000;
@@ -180,14 +198,27 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
   let running = false;
   let timer = 0;
   let raf = 0;
+  let htmlSnap: string[] | null = null;
+
+  const captureContent = () => {
+    htmlSnap = spans.map((s) => s.innerHTML);
+  };
+
+  const restore = (s: HTMLElement, idx: number) => {
+    if (htmlSnap) {
+      if (s.innerHTML !== htmlSnap[idx]) s.innerHTML = htmlSnap[idx];
+      return;
+    }
+    const text = spec.items[idx].text;
+    if (s.textContent !== text) s.textContent = text;
+  };
 
   const show = (k: number) => {
     const st = style();
     el.dataset.style = st;
     spans.forEach((s, idx) => {
       apply(st, s, idx === k ? 1 : 0, true);
-      const text = spec.items[idx].text;
-      if (s.textContent !== text) s.textContent = text;
+      restore(s, idx);
     });
   };
 
@@ -209,7 +240,7 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
       const e = st === "morph" || st === "scramble" ? f : f * f * (3 - 2 * f);
       apply(st, spans[from], 1 - e, false);
       apply(st, spans[to], e, true);
-      if (st === "scramble" && f < 1 && now - lastScramble > 50) {
+      if (st === "scramble" && !htmlSnap && f < 1 && now - lastScramble > 50) {
         spans[to].textContent = scramble(spec.items[to].text, f);
         lastScramble = now;
       }
@@ -256,9 +287,12 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
 
   return {
     el,
+    itemEls: spans,
     destroy: () => {
       pause();
       io?.disconnect();
     },
+    captureContent,
+    refresh: () => show(i),
   };
 }

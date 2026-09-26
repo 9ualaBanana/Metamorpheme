@@ -1,28 +1,69 @@
-import { editorLivePreviewField } from "obsidian";
+import { App, Component, editorLivePreviewField } from "obsidian";
 import { syntaxTree } from "@codemirror/language";
 import { EditorState, RangeSetBuilder } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
-import { createMorph, Defaults, parseSpec } from "./morph";
+import { hydrateMorphMarkdown, peelOuterMarkup, applyOuterMarkup } from "./markdown";
+import { createMorph, Defaults, parseSpec, Spec } from "./morph";
 
 type Destroyable = HTMLElement & { __morphDestroy?: () => void };
 
+function linkFromPointer(event: Event): HTMLElement | null {
+  const from = (n: EventTarget | null): HTMLElement | null => {
+    if (!(n instanceof HTMLElement)) return null;
+    return n.closest("a, .internal-link, .external-link, button, input, textarea, .internal-embed");
+  };
+  for (const n of event.composedPath()) {
+    const hit = from(n);
+    if (hit) return hit;
+  }
+  if (!("clientX" in event)) return null;
+  const { clientX, clientY } = event as MouseEvent;
+  for (const n of document.elementsFromPoint(clientX, clientY)) {
+    const hit = from(n);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 class MorphWidget extends WidgetType {
-  constructor(private raw: string, private d: Defaults) {
+  constructor(
+    private spec: Spec,
+    private d: Defaults,
+    private app: App,
+    private sourcePath: string,
+    private host: Component
+  ) {
     super();
   }
   eq(other: MorphWidget) {
-    return other.raw === this.raw;
+    return (
+      other.sourcePath === this.sourcePath &&
+      other.d === this.d &&
+      JSON.stringify(other.spec) === JSON.stringify(this.spec)
+    );
   }
   toDOM() {
-    const { el, destroy } = createMorph(parseSpec(this.raw, this.d.separator), this.d);
-    (el as Destroyable).__morphDestroy = destroy;
+    const handle = createMorph(this.spec, this.d);
+    const owner = new Component();
+    this.host.addChild(owner);
+    void hydrateMorphMarkdown(handle, this.spec, this.app, this.sourcePath, owner);
+    const el = handle.el as Destroyable;
+    el.__morphDestroy = () => {
+      handle.destroy();
+      this.host.removeChild(owner);
+    };
     return el;
   }
   destroy(dom: HTMLElement) {
     (dom as Destroyable).__morphDestroy?.();
   }
-  ignoreEvent() {
-    return false;
+  ignoreEvent(event: Event) {
+    if (linkFromPointer(event)) return true;
+    if (!("clientX" in event)) return false;
+    const { clientX, clientY } = event as MouseEvent;
+    return document.elementsFromPoint(clientX, clientY).some(
+      (n) => n instanceof HTMLElement && n.classList.contains("morph-word") && n.querySelector("a")
+    );
   }
 }
 
@@ -46,7 +87,7 @@ function inCode(state: EditorState, from: number, to: number): boolean {
   return hit;
 }
 
-export function morphLivePreview(d: Defaults) {
+export function morphLivePreview(d: Defaults, app: App, sourcePath: () => string, host: Component) {
   return ViewPlugin.fromClass(
     class {
       decorations: DecorationSet;
@@ -68,6 +109,7 @@ export function morphLivePreview(d: Defaults) {
 
         const builder = new RangeSetBuilder<Decoration>();
         const { doc, selection } = view.state;
+        const path = sourcePath();
         let lastLineEnd = -1;
 
         for (const { from, to } of view.visibleRanges) {
@@ -85,9 +127,12 @@ export function morphLivePreview(d: Defaults) {
               const start = line.from + m.index;
               const end = start + m[0].length;
               if (selection.ranges.some((r) => r.from <= end && r.to >= start)) continue;
-              if (!parseSpec(m[1], d.separator).items.length) continue;
+              let spec = parseSpec(m[1], d.separator);
+              if (!spec.items.length) continue;
               if (inCode(view.state, start, end)) continue;
-              builder.add(start, end, Decoration.replace({ widget: new MorphWidget(m[1], d) }));
+              const peeled = peelOuterMarkup(line.text.slice(0, m.index), line.text.slice(m.index + m[0].length));
+              spec = applyOuterMarkup(spec, peeled.open, peeled.close);
+              builder.add(start, end, Decoration.replace({ widget: new MorphWidget(spec, d, app, path, host) }));
             }
           }
         }

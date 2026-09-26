@@ -10,6 +10,7 @@ import {
   TFile,
 } from "obsidian";
 import { morphLivePreview } from "./livepreview";
+import { applyOuterMarkup, hydrateMorphMarkdown, markupFromAncestors, peelOuterMarkup } from "./markdown";
 import {
   createMorph,
   Defaults,
@@ -89,26 +90,28 @@ export default class MorphTextPlugin extends Plugin {
 
     // Reading view: inline {~ a | b ~}
     this.registerMarkdownPostProcessor((el, ctx) => {
-      const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-      const nodes: Text[] = [];
-      while (walker.nextNode()) {
-        const n = walker.currentNode as Text;
-        if (n.nodeValue?.includes("{~") && !n.parentElement?.closest("code, pre")) nodes.push(n);
-      }
-      nodes.forEach((n) => this.renderInText(n, ctx));
-    });
+      if (el.closest(".morph-text, .morph-word")) return;
+      this.renderMorphsInElement(el, ctx);
+    }, 10000);
 
-    // ```morph blocks (Reading + Live Preview)
     this.registerMarkdownCodeBlockProcessor("morph", (src, el, ctx) => {
       const spec = parseBlock(src, this.settings.separator);
       if (!spec.items.length) return;
-      const { el: m, destroy } = createMorph(spec, this.settings);
-      el.createDiv({ cls: "morph-block" }).appendChild(m);
-      ctx.addChild(new MorphChild(el, destroy));
+      const handle = createMorph(spec, this.settings);
+      el.createDiv({ cls: "morph-block" }).appendChild(handle.el);
+      const child = new MorphChild(handle.el, handle.destroy);
+      ctx.addChild(child);
+      void hydrateMorphMarkdown(handle, spec, this.app, ctx.sourcePath, child);
     });
 
-    // Live Preview: inline widgets
-    this.registerEditorExtension(morphLivePreview(this.settings));
+    this.registerEditorExtension(
+      morphLivePreview(
+        this.settings,
+        this.app,
+        () => this.app.workspace.getActiveFile()?.path ?? "",
+        this
+      )
+    );
 
     this.addCommand({
       id: "insert-morph-set",
@@ -233,6 +236,76 @@ export default class MorphTextPlugin extends Plugin {
     this.svg = svg;
   }
 
+  private renderMorphsInElement(el: HTMLElement, ctx: MarkdownPostProcessorContext) {
+    const nodes = this.morphTextNodes(el);
+    if (!nodes.length) return;
+    const text = nodes.map((n) => n.nodeValue ?? "").join("");
+    if (!text.includes("{~")) return;
+
+    const matches = [...text.matchAll(/\{~(.+?)~\}/g)];
+    if (!matches.length) return;
+
+    const info = ctx.getSectionInfo(el);
+    const sourceMatches = info?.text ? [...info.text.matchAll(/\{~(.+?)~\}/g)] : [];
+    const useSource = sourceMatches.length === matches.length;
+
+    const indexAt = (index: number): { node: Text; offset: number } | null => {
+      let acc = 0;
+      for (const node of nodes) {
+        const len = node.nodeValue?.length ?? 0;
+        if (index <= acc + len) return { node, offset: index - acc };
+        acc += len;
+      }
+      return null;
+    };
+
+    for (let i = matches.length - 1; i >= 0; i--) {
+      const m = matches[i];
+      if (m.index === undefined) continue;
+      const raw = useSource ? sourceMatches[i][1] : m[1];
+      let spec = parseSpec(raw, this.settings.separator);
+      if (!spec.items.length) continue;
+      if (useSource && info?.text && sourceMatches[i].index !== undefined) {
+        const sm = sourceMatches[i];
+        const peeled = peelOuterMarkup(
+          info.text.slice(0, sm.index),
+          info.text.slice(sm.index + sm[0].length)
+        );
+        spec = applyOuterMarkup(spec, peeled.open, peeled.close);
+      }
+      const from = indexAt(m.index);
+      const to = indexAt(m.index + m[0].length);
+      if (!from || !to) continue;
+      if (from.node.parentElement?.closest("code, pre")) continue;
+
+      const range = el.ownerDocument.createRange();
+      range.setStart(from.node, from.offset);
+      range.setEnd(to.node, to.offset);
+
+      const handle = createMorph(spec, this.settings);
+      const child = new MorphChild(handle.el, handle.destroy);
+      ctx.addChild(child);
+      range.deleteContents();
+      range.insertNode(handle.el);
+      if (!useSource) {
+        const peeled = markupFromAncestors(handle.el);
+        spec = applyOuterMarkup(spec, peeled.open, peeled.close);
+      }
+      void hydrateMorphMarkdown(handle, spec, this.app, ctx.sourcePath, child);
+    }
+  }
+
+  private morphTextNodes(root: HTMLElement): Text[] {
+    const nodes: Text[] = [];
+    const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const n = walker.currentNode as Text;
+      if (n.parentElement?.closest("code, pre, .morph-text, .morph-word")) continue;
+      nodes.push(n);
+    }
+    return nodes;
+  }
+
   /** Splits text around {~ ... ~} and returns a fragment with morph elements in place. */
   private buildFragment(text: string, sep: string): { frag: DocumentFragment; handles: MorphHandle[] } | null {
     const re = /\{~(.+?)~\}/g;
@@ -252,13 +325,6 @@ export default class MorphTextPlugin extends Plugin {
     if (!handles.length) return null;
     frag.append(text.slice(last));
     return { frag, handles };
-  }
-
-  private renderInText(node: Text, ctx: MarkdownPostProcessorContext) {
-    const built = this.buildFragment(node.nodeValue ?? "", this.settings.separator);
-    if (!built) return;
-    built.handles.forEach((h) => ctx.addChild(new MorphChild(h.el, h.destroy)));
-    node.replaceWith(built.frag);
   }
 
   // ───────────────────────── note titles ─────────────────────────
@@ -483,8 +549,8 @@ class MorphSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("Rewrite on separator change")
-      .setDesc("Replace the old separator inside existing {~ … ~} constructs across the vault (notes and titles).")
+      .setName("Rewrite metamorphemes on separator change")
+      .setDesc("Update separators inside existing metamorphemes across the vault.")
       .addToggle((t) =>
         t.setValue(this.plugin.settings.rewriteOnSeparatorChange).onChange(async (v) => {
           this.plugin.settings.rewriteOnSeparatorChange = v;
