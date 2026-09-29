@@ -2,11 +2,11 @@
 
 **Superpose meanings that coincide.**
 
+Vague by design.
+
 Linguistically, we like to think words have strict definitions in the dictionary. But in actual communication, words function exactly like clouds of states. They exist in superposition until context forces them to resolve. Take off the mental load of translating multidimensional ideas into shallow symbols.
 
 ![Say/Mean what you mean/say](assets/say-what-you-mean.gif)
-
-Vague on purpose.
 
 > Share {~ piece | peace ~} of your mind in its native language
 
@@ -31,26 +31,11 @@ Inline (Reading view and Live Preview). The default separator is `;`:
 - First segment `hold= fade= style= align=` sets defaults for that set (`align`: left | center | right).
 - Styles: `morph` (liquid), `crossfade`, `blur`, `slide`, `zoom`, `scramble`. The default is chosen in plugin settings; `style=` overrides it for one set.
 - Markdown inside a set still works: `{ ~ **Hello** ; [[World]] ~ }`. Wrapping the whole set (`**{~ a ; b ~}**`) applies to every morpheme.
-- File names cannot contain `|`, so titles use the same `;` separator by default.
-
-Block form (one word per line, first line optional options):
-
-```
-```morph
-hold=2 fade=1
-Think
-Write
-Ship @4
-```
-```
-
-
 
 ## Commands
 
 - **Insert morph set** — `Cmd/Ctrl+Shift+M`. Wraps the selection, or inserts an empty set.
 - **Convert slash or pipe list to morph set** — `Cmd/Ctrl+Shift+/`. Turns `a|b|c` or `a/b/c` (including markdown links) into `{~~}`.
-- **Insert morph block** — inserts a `morph` code block.
 
 Typing `{` still auto-closes `}` when **Settings → Editor → Auto pair brackets** is on. Typing `~` between `{|}` then inserts `{ ~ | ~}` with the cursor in the middle. Turn this off in plugin settings, or by disabling auto-pair brackets globally.
 

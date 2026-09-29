@@ -17,7 +17,6 @@ import {
   Defaults,
   FILTER_ID,
   MorphHandle,
-  parseBlock,
   parseSpec,
   rewriteMorphSeparators,
   Style,
@@ -34,6 +33,7 @@ interface MorphSettings extends Defaults {
   titleHeader: boolean;
   /** morph file and folder names in the file explorer */
   titleExplorer: boolean;
+  distinctTitleSeparator: boolean;
   titleSeparator: string;
   rewriteOnSeparatorChange: boolean;
   autoCloseMorph: boolean;
@@ -48,6 +48,7 @@ const DEFAULTS: MorphSettings = {
   titleInline: true,
   titleHeader: true,
   titleExplorer: true,
+  distinctTitleSeparator: false,
   titleSeparator: ";",
   rewriteOnSeparatorChange: true,
   autoCloseMorph: true,
@@ -84,10 +85,14 @@ export default class MorphTextPlugin extends Plugin {
   private rewriting = false;
 
   async onload() {
-    Object.assign(this.settings, await this.loadData());
+    const data = await this.loadData();
+    Object.assign(this.settings, data);
+    if (data == null || typeof data.distinctTitleSeparator !== "boolean") {
+      this.settings.distinctTitleSeparator = this.settings.titleSeparator !== this.settings.separator;
+    }
     if (!(STYLES as readonly string[]).includes(this.settings.style)) this.settings.style = "morph";
     this.appliedSeparator = this.settings.separator;
-    this.appliedTitleSeparator = this.settings.titleSeparator;
+    this.appliedTitleSeparator = this.titleSep();
     this.installFilter();
 
     // Reading view: inline {~ a | b ~}
@@ -95,16 +100,6 @@ export default class MorphTextPlugin extends Plugin {
       if (el.closest(".morph-text, .morph-word")) return;
       this.renderMorphsInElement(el, ctx);
     }, 10000);
-
-    this.registerMarkdownCodeBlockProcessor("morph", (src, el, ctx) => {
-      const spec = parseBlock(src, this.settings.separator);
-      if (!spec.items.length) return;
-      const handle = createMorph(spec, this.settings);
-      el.createDiv({ cls: "morph-block" }).appendChild(handle.el);
-      const child = new MorphChild(handle.el, handle.destroy);
-      ctx.addChild(child);
-      void hydrateMorphMarkdown(handle, spec, this.app, ctx.sourcePath, child);
-    });
 
     this.registerEditorExtension(
       morphLivePreview(
@@ -130,12 +125,6 @@ export default class MorphTextPlugin extends Plugin {
       name: "Convert slash or pipe list to morph set",
       editorCallback: (editor: Editor) => this.convertSlashPipeList(editor),
       hotkeys: [{ modifiers: ["Mod", "Shift"], key: "/" }],
-    });
-
-    this.addCommand({
-      id: "insert-morph-block",
-      name: "Insert morph block",
-      editorCallback: (editor: Editor) => this.insertBlock(editor),
     });
 
     this.addSettingTab(new MorphSettingTab(this.app, this));
@@ -164,7 +153,7 @@ export default class MorphTextPlugin extends Plugin {
     const notesFrom = this.appliedSeparator;
     const notesTo = s.separator;
     const titlesFrom = this.appliedTitleSeparator;
-    const titlesTo = s.titleSeparator;
+    const titlesTo = this.titleSep();
 
     if (!s.rewriteOnSeparatorChange) {
       this.appliedSeparator = notesTo;
@@ -227,6 +216,11 @@ export default class MorphTextPlugin extends Plugin {
       }
     }
     return changed;
+  }
+
+  private titleSep(): string {
+    const s = this.settings;
+    return (s.distinctTitleSeparator ? s.titleSeparator : s.separator) || ";";
   }
 
   async saveSettings() {
@@ -342,9 +336,7 @@ export default class MorphTextPlugin extends Plugin {
   // ───────────────────────── note titles ─────────────────────────
   //
   // A note named  "Say {~ Mean ; Do ; Ship ~}"  shows morphing text in its title.
-  // File names cannot contain "|" (or "/" and ":"), so titles use their own separator
-  // (default ";") and per-word timing is limited to "@hold" — use hold= / fade= / style=
-  // in the first segment for the rest.
+  // Per-word timing is limited to "@hold". hold= / fade= / style= go in the first segment.
 
   private setupTitles() {
     const schedule = (delay = 120) => {
@@ -425,7 +417,7 @@ export default class MorphTextPlugin extends Plugin {
     const raw = el.textContent ?? "";
     if (!raw.includes("{~")) return;
 
-    const built = this.buildFragment(raw, this.settings.titleSeparator || ";");
+    const built = this.buildFragment(raw, this.titleSep());
     if (!built) return;
 
     el.empty();
@@ -577,17 +569,12 @@ export default class MorphTextPlugin extends Plugin {
     return close >= 0;
   }
 
-  private insertBlock(editor: Editor) {
-    const sel = editor.getSelection();
-    const words = sel ? sel.split("\n").map((s) => s.trim()).filter(Boolean) : ["", ""];
-    const from = editor.getCursor("from");
-    editor.replaceSelection("```morph\nhold=2 fade=1\n" + words.join("\n") + "\n```");
-    if (!sel) editor.setCursor({ line: from.line + 2, ch: 0 });
-  }
 }
 
 class MorphSettingTab extends PluginSettingTab {
   private previews: MorphHandle[] = [];
+  private titleRows: Setting[] = [];
+  private titleSeparatorRow?: Setting;
 
   constructor(app: App, private plugin: MorphTextPlugin) {
     super(app, plugin);
@@ -602,6 +589,8 @@ class MorphSettingTab extends PluginSettingTab {
 
   display() {
     const { containerEl } = this;
+    this.titleRows = [];
+    this.titleSeparatorRow = undefined;
     this.hide();
     containerEl.empty();
 
@@ -670,7 +659,7 @@ class MorphSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Auto-close {~  ~}")
-      .setDesc("When enabled, typing ~ inside {} inserts {~  ~} with the cursor in the middle. Requires Editor → Auto pair brackets setting being enabled.")
+      .setDesc("When enabled, typing ~ inside {} inserts {~  ~} with the cursor in the middle.\nRequires `Editor → Auto pair brackets` global setting being enabled.")
       .addToggle((t) =>
         t.setValue(this.plugin.settings.autoCloseMorph).onChange(async (v) => {
           this.plugin.settings.autoCloseMorph = v;
@@ -686,47 +675,67 @@ class MorphSettingTab extends PluginSettingTab {
       .addToggle((t) =>
         t.setValue(this.plugin.settings.morphTitles).onChange(async (v) => {
           this.plugin.settings.morphTitles = v;
+          if (v) {
+            this.plugin.settings.titleInline = true;
+            this.plugin.settings.titleHeader = true;
+            this.plugin.settings.titleExplorer = true;
+            this.plugin.settings.distinctTitleSeparator = false;
+          }
           await this.plugin.saveSettings();
+          this.display();
           this.plugin.refreshTitles();
+          await this.plugin.flushSeparatorRewrite();
         })
       );
 
-    new Setting(containerEl)
-      .setName("Editor")
-      .setDesc("The title at the top of the note editor.")
-      .addToggle((t) =>
-        t.setValue(this.plugin.settings.titleInline).onChange(async (v) => {
-          this.plugin.settings.titleInline = v;
-          await this.plugin.saveSettings();
-          this.plugin.refreshTitles();
-        })
-      );
+    this.titleRows = [
+      new Setting(containerEl)
+        .setName("Editor")
+        .setDesc("The title at the top of the note editor.")
+        .addToggle((t) =>
+          t.setValue(this.plugin.settings.titleInline).onChange(async (v) => {
+            this.plugin.settings.titleInline = v;
+            await this.plugin.saveSettings();
+            this.plugin.refreshTitles();
+          })
+        ),
+      new Setting(containerEl)
+        .setName("Tab & Header")
+        .setDesc("The title shown in the tab and in the note header.")
+        .addToggle((t) =>
+          t.setValue(this.plugin.settings.titleHeader).onChange(async (v) => {
+            this.plugin.settings.titleHeader = v;
+            await this.plugin.saveSettings();
+            this.plugin.refreshTitles();
+          })
+        ),
+      new Setting(containerEl)
+        .setName("File explorer")
+        .setDesc("File and folder names in the sidebar.")
+        .addToggle((t) =>
+          t.setValue(this.plugin.settings.titleExplorer).onChange(async (v) => {
+            this.plugin.settings.titleExplorer = v;
+            await this.plugin.saveSettings();
+            this.plugin.refreshTitles();
+          })
+        ),
+      new Setting(containerEl)
+        .setName("Use different separator")
+        .setDesc("Use different morphemes separator for titles.")
+        .addToggle((t) =>
+          t.setValue(this.plugin.settings.distinctTitleSeparator).onChange(async (v) => {
+            this.plugin.settings.distinctTitleSeparator = v;
+            await this.plugin.saveSettings();
+            this.syncTitleOptions();
+            this.plugin.refreshTitles();
+            await this.plugin.flushSeparatorRewrite();
+          })
+        ),
+    ];
 
-    new Setting(containerEl)
-      .setName("Tab & Header")
-      .setDesc("The title shown in the tab and in the note header.")
-      .addToggle((t) =>
-        t.setValue(this.plugin.settings.titleHeader).onChange(async (v) => {
-          this.plugin.settings.titleHeader = v;
-          await this.plugin.saveSettings();
-          this.plugin.refreshTitles();
-        })
-      );
-
-    new Setting(containerEl)
-      .setName("File explorer")
-      .setDesc("File and folder names in the sidebar.")
-      .addToggle((t) =>
-        t.setValue(this.plugin.settings.titleExplorer).onChange(async (v) => {
-          this.plugin.settings.titleExplorer = v;
-          await this.plugin.saveSettings();
-          this.plugin.refreshTitles();
-        })
-      );
-
-    new Setting(containerEl)
+    this.titleSeparatorRow = new Setting(containerEl)
       .setName("Morphemes separator")
-      .setDesc('Used inside file names, where some symbols are not allowed.')
+      .setDesc('Symbol to separate morphemes in note titles. Forbidden symbols: * " \\ / < > : | ? # ^ [ ].')
       .addText((t) => {
         t.setValue(this.plugin.settings.titleSeparator).setPlaceholder(";");
         this.commitTextOnLeave(t.inputEl, async (v) => {
@@ -738,8 +747,21 @@ class MorphSettingTab extends PluginSettingTab {
         });
       });
 
+    this.syncTitleOptions();
+
     new Setting(containerEl).setName("Preview").setHeading();
     this.fillPreview(containerEl.createDiv({ cls: "morph-block" }));
+  }
+
+  private syncTitleOptions() {
+    const on = this.plugin.settings.morphTitles;
+    const showSep = on && this.plugin.settings.distinctTitleSeparator;
+    for (const row of this.titleRows) {
+      row.settingEl.toggle(on);
+      row.setDisabled(!on);
+    }
+    this.titleSeparatorRow?.settingEl.toggle(showSep);
+    this.titleSeparatorRow?.setDisabled(!showSep);
   }
 
   private fillPreview(host: HTMLElement) {
@@ -748,7 +770,7 @@ class MorphSettingTab extends PluginSettingTab {
     host.empty();
     const d = this.plugin.settings;
     const add = (parent: HTMLElement, words: string[]) => {
-      const handle = createMorph({ items: words.map((text) => ({ text })), hold: d.hold }, d);
+      const handle = createMorph({ items: words.map((text) => ({ text })) }, d);
       this.previews.push(handle);
       parent.appendChild(handle.el);
     };

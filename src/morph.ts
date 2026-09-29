@@ -93,12 +93,6 @@ export function rewriteMorphSeparators(text: string, oldSep: string, newSep: str
   });
 }
 
-/** Fenced-block form: one word per line, optional first line of options. */
-export function parseBlock(src: string, separator: string): Spec {
-  const lines = src.split("\n").map((l) => l.trim()).filter(Boolean);
-  return parseSpec(lines.join(` ${separator} `), separator);
-}
-
 function reducedMotion(view: Window): boolean {
   return view.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 }
