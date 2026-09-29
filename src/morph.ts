@@ -39,6 +39,7 @@ export interface MorphHandle {
   destroy: () => void;
   captureContent: () => void;
   refresh: () => void;
+  play: () => void;
 }
 
 export const FILTER_ID = "obsidian-morph-threshold";
@@ -294,5 +295,6 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
     },
     captureContent,
     refresh: () => show(i),
+    play,
   };
 }
