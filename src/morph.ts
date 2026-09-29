@@ -99,8 +99,8 @@ export function parseBlock(src: string, separator: string): Spec {
   return parseSpec(lines.join(` ${separator} `), separator);
 }
 
-function reducedMotion(): boolean {
-  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+function reducedMotion(view: Window): boolean {
+  return view.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 }
 
 /** f = how visible the word is (0..1); incoming = true for the word appearing. */
@@ -189,16 +189,18 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
   });
 
   const n = spans.length;
-  const reduced = reducedMotion();
-  const style = (): Style => (reduced ? "crossfade" : spec.style ?? d.style ?? "morph");
+  const host = () => el.ownerDocument.defaultView ?? window;
+  const style = (): Style => (reducedMotion(host()) ? "crossfade" : spec.style ?? d.style ?? "morph");
   const holdMs = (k: number) => Math.max(0, spec.items[k].hold ?? spec.hold ?? d.hold) * 1000;
   const fadeMs = (k: number) => Math.max(0.05, spec.items[k].fade ?? spec.fade ?? d.fade) * 1000;
 
   let i = 0;
   let fading = false;
   let running = false;
+  let dead = false;
   let timer = 0;
   let raf = 0;
+  let clock: Window = window;
   let htmlSnap: string[] | null = null;
 
   const captureContent = () => {
@@ -224,19 +226,22 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
   };
 
   const scheduleHold = (seed = false) => {
-    timer = window.setTimeout(beginFade, holdMs(i) * (seed ? Math.random() : 1));
+    clock = host();
+    timer = clock.setTimeout(beginFade, holdMs(i) * (seed ? Math.random() : 1));
   };
 
   const beginFade = () => {
+    if (dead || !running) return;
     fading = true;
     const from = i;
     const to = (i + 1) % n;
     const dur = fadeMs(from);
     const st = style();
     el.dataset.style = st;
-    const t0 = performance.now();
+    const t0 = clock.performance.now();
     let lastScramble = 0;
     const step = (now: number) => {
+      if (dead || !running) return;
       const f = Math.min(1, (now - t0) / dur);
       const e = st === "morph" || st === "scramble" ? f : f * f * (3 - 2 * f);
       apply(st, spans[from], 1 - e, false);
@@ -246,7 +251,7 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
         lastScramble = now;
       }
       if (f < 1) {
-        raf = window.requestAnimationFrame(step);
+        raf = clock.requestAnimationFrame(step);
       } else {
         i = to;
         fading = false;
@@ -254,19 +259,19 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
         scheduleHold();
       }
     };
-    raf = window.requestAnimationFrame(step);
+    raf = clock.requestAnimationFrame(step);
   };
 
   const play = () => {
-    if (running) return;
+    if (dead || running) return;
     running = true;
     scheduleHold(true);
   };
 
   const pause = () => {
     running = false;
-    window.clearTimeout(timer);
-    window.cancelAnimationFrame(raf);
+    clock.clearTimeout(timer);
+    clock.cancelAnimationFrame(raf);
     if (fading) {
       i = (i + 1) % n;
       fading = false;
@@ -278,18 +283,23 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
 
   let io: IntersectionObserver | undefined;
   if (n > 1) {
-    io = new IntersectionObserver((entries) => {
-      const visible = entries[entries.length - 1].isIntersecting;
-      if (visible) play();
-      else pause();
+    queueMicrotask(() => {
+      if (dead) return;
+      const view = host();
+      io = new view.IntersectionObserver((entries) => {
+        const visible = entries[entries.length - 1].isIntersecting;
+        if (visible) play();
+        else pause();
+      });
+      io.observe(el);
     });
-    io.observe(el);
   }
 
   return {
     el,
     itemEls: spans,
     destroy: () => {
+      dead = true;
       pause();
       io?.disconnect();
     },

@@ -587,7 +587,7 @@ export default class MorphTextPlugin extends Plugin {
 }
 
 class MorphSettingTab extends PluginSettingTab {
-  private preview?: MorphHandle;
+  private previews: MorphHandle[] = [];
 
   constructor(app: App, private plugin: MorphTextPlugin) {
     super(app, plugin);
@@ -596,8 +596,8 @@ class MorphSettingTab extends PluginSettingTab {
   hide() {
     const active = this.containerEl.ownerDocument.activeElement;
     if (active instanceof HTMLElement && this.containerEl.contains(active)) active.blur();
-    this.preview?.destroy();
-    this.preview = undefined;
+    this.previews.forEach((h) => h.destroy());
+    this.previews = [];
   }
 
   display() {
@@ -739,12 +739,22 @@ class MorphSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl).setName("Preview").setHeading();
-    const box = containerEl.createDiv({ cls: "morph-block" });
-    this.preview = createMorph(
-      { items: [{ text: "Say" }, { text: "Mean" }], hold: this.plugin.settings.hold },
-      this.plugin.settings
-    );
-    box.appendChild(this.preview.el);
+    this.fillPreview(containerEl.createDiv({ cls: "morph-block" }));
+  }
+
+  private fillPreview(host: HTMLElement) {
+    this.previews.forEach((h) => h.destroy());
+    this.previews = [];
+    host.empty();
+    const d = this.plugin.settings;
+    const add = (parent: HTMLElement, words: string[]) => {
+      const handle = createMorph({ items: words.map((text) => ({ text })), hold: d.hold }, d);
+      this.previews.push(handle);
+      parent.appendChild(handle.el);
+    };
+    add(host, ["Say", "Mean"]);
+    host.append(" what you ");
+    add(host, ["mean", "say"]);
   }
 
   private commitTextOnLeave(input: HTMLInputElement, apply: (value: string) => void | Promise<void>) {
@@ -756,16 +766,7 @@ class MorphSettingTab extends PluginSettingTab {
   }
 
   private updatePreview() {
-    if (!this.preview) return;
-    const parent = this.preview.el.parentElement;
-    if (parent) {
-      this.preview.destroy();
-      parent.empty();
-      this.preview = createMorph(
-        { items: [{ text: "Say" }, { text: "Mean" }], hold: this.plugin.settings.hold },
-        this.plugin.settings
-      );
-      parent.appendChild(this.preview.el);
-    }
+    const host = this.containerEl.querySelector(".morph-block");
+    if (host instanceof HTMLElement) this.fillPreview(host);
   }
 }
