@@ -1,5 +1,13 @@
 export const STYLES = ["morph", "crossfade", "blur", "slide", "zoom", "scramble"] as const;
 export type Style = (typeof STYLES)[number];
+export const ALIGNS = ["left", "center", "right", "justify"] as const;
+export type Align = (typeof ALIGNS)[number];
+export const ALIGN_LABELS: Record<Align, string> = {
+  left: "Left",
+  center: "Center",
+  right: "Right",
+  justify: "Justify",
+};
 
 export const STYLE_LABELS: Record<Style, string> = {
   morph: "Liquid morph",
@@ -16,7 +24,9 @@ export interface Defaults {
   /** seconds the transition into the next word takes */
   fade: number;
   style: Style;
+  align: Align;
   separator: string;
+  keepEmpty: boolean;
 }
 
 export interface Item {
@@ -30,7 +40,7 @@ export interface Spec {
   hold?: number;
   fade?: number;
   style?: Style;
-  align?: "left" | "center" | "right";
+  align?: Align;
 }
 
 export interface MorphHandle {
@@ -57,7 +67,7 @@ function num(v: string | undefined): number | undefined {
  * Parses the inside of `{~ ... ~}`:
  *   [hold=2 fade=1 style=slide align=left |] word [@hold[/fade]] | word [@hold[/fade]] | ...
  */
-export function parseSpec(raw: string, separator: string): Spec {
+export function parseSpec(raw: string, separator: string, keepEmpty = true): Spec {
   const parts = raw.split(separator).map((p) => p.replace(/\\\s*$/, "").trim());
   const spec: Spec = { items: [] };
 
@@ -69,12 +79,15 @@ export function parseSpec(raw: string, separator: string): Spec {
       if (key === "hold") spec.hold = num(m[2]);
       else if (key === "fade") spec.fade = num(m[2]);
       else if (key === "style" && (STYLES as readonly string[]).includes(val)) spec.style = val as Style;
-      else if (key === "align" && /^(left|center|right)$/.test(val)) spec.align = val as Spec["align"];
+      else if (key === "align" && (ALIGNS as readonly string[]).includes(val)) spec.align = val as Align;
     }
   }
 
   for (const p of parts) {
-    if (!p) continue;
+    if (!p) {
+      if (keepEmpty) spec.items.push({ text: "" });
+      continue;
+    }
     const m = ITEM.exec(p);
     if (m && (m[2] !== undefined || m[3] !== undefined)) {
       spec.items.push({ text: m[1].trim(), hold: num(m[2]), fade: num(m[3]) });
@@ -82,6 +95,7 @@ export function parseSpec(raw: string, separator: string): Spec {
       spec.items.push({ text: p });
     }
   }
+  if (keepEmpty && spec.items.length && spec.items.every((it) => !it.text)) spec.items = [];
   return spec;
 }
 
@@ -161,8 +175,10 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
   const el = document.createElement("span");
   el.className = "morph-text";
   el.setAttribute("aria-label", spec.items.map((i) => i.text).join(", "));
-  const justify = spec.align === "left" ? "start" : spec.align === "right" ? "end" : "center";
-  el.style.setProperty("--morph-justify", justify);
+  const alignOf = (): Align => spec.align ?? d.align ?? "center";
+  const justifyOf = (a: Align) =>
+    a === "left" ? "start" : a === "right" ? "end" : a === "justify" ? "stretch" : "center";
+  el.style.setProperty("--morph-justify", justifyOf(alignOf() === "justify" ? "center" : alignOf()));
   el.addEventListener("click", (e) => {
     const t = e.target;
     if (!(t instanceof Element) || t.closest("a")) return;
@@ -177,7 +193,7 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
     const s = document.createElement("span");
     s.className = "morph-word";
     s.setAttribute("aria-hidden", "true");
-    s.textContent = it.text;
+    s.textContent = it.text || "\u00a0";
     el.appendChild(s);
     return s;
   });
@@ -207,16 +223,61 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
       return;
     }
     const text = spec.items[idx].text;
+    if (!text) {
+      if (s.textContent !== "\u00a0") s.textContent = "\u00a0";
+      return;
+    }
     if (s.textContent !== text) s.textContent = text;
+  };
+
+  const glyphCount = (node: Node): number => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return Array.from(node.textContent ?? "").filter((c) => c !== " " && c !== "\u00a0" && c !== "\n").length;
+    }
+    let n = 0;
+    node.childNodes.forEach((c) => {
+      n += glyphCount(c);
+    });
+    return n;
+  };
+
+  const naturalWidth = (s: HTMLElement) => {
+    const prev = s.style.letterSpacing;
+    s.style.letterSpacing = "0";
+    const w = s.scrollWidth;
+    s.style.letterSpacing = prev;
+    return w;
+  };
+
+  const fit = () => {
+    if (alignOf() !== "justify") {
+      for (const s of spans) s.style.letterSpacing = "";
+      return;
+    }
+    if (!el.isConnected) {
+      queueMicrotask(() => {
+        if (!dead) fit();
+      });
+      return;
+    }
+    const wide = Math.max(...spans.map(naturalWidth), 0);
+    if (wide <= 0) return;
+    for (const s of spans) {
+      const w = naturalWidth(s);
+      const gaps = Math.max(0, glyphCount(s) - 1);
+      s.style.letterSpacing = gaps && w + 0.5 < wide ? `${(wide - w) / gaps}px` : "0";
+    }
   };
 
   const show = (k: number) => {
     const st = style();
     el.dataset.style = st;
+    el.style.setProperty("--morph-justify", justifyOf(alignOf() === "justify" ? "center" : alignOf()));
     spans.forEach((s, idx) => {
       apply(st, s, idx === k ? 1 : 0, true);
       restore(s, idx);
     });
+    fit();
   };
 
   const scheduleHold = (seed = false) => {
@@ -274,6 +335,7 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
   };
 
   show(0);
+  queueMicrotask(fit);
 
   let io: IntersectionObserver | undefined;
   if (n > 1) {
@@ -298,7 +360,10 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
       io?.disconnect();
     },
     captureContent,
-    refresh: () => show(i),
+    refresh: () => {
+      show(i);
+      fit();
+    },
     play,
   };
 }

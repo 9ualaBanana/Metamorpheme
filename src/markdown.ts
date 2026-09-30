@@ -116,7 +116,12 @@ export async function hydrateMorphMarkdown(
     const span = handle.itemEls[i];
     if (!span) continue;
     span.empty();
-    await MarkdownRenderer.render(app, spec.items[i].text, span, sourcePath, owner);
+    const raw = spec.items[i].text;
+    if (!raw) {
+      span.textContent = "\u00a0";
+      continue;
+    }
+    await MarkdownRenderer.render(app, raw, span, sourcePath, owner);
     unwrapRenderedMarkdown(span);
     for (const a of Array.from(span.querySelectorAll("a"))) {
       a.addEventListener("click", (e) => {

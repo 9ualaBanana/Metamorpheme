@@ -13,6 +13,9 @@ import { morphLivePreview } from "./livepreview";
 import { morphAutoClose } from "./autoclose";
 import { applyOuterMarkup, hydrateMorphMarkdown, markupFromAncestors, peelOuterMarkup } from "./markdown";
 import {
+  Align,
+  ALIGN_LABELS,
+  ALIGNS,
   createMorph,
   Defaults,
   FILTER_ID,
@@ -43,7 +46,9 @@ const DEFAULTS: MorphSettings = {
   hold: 2,
   fade: 1,
   style: "morph",
+  align: "center",
   separator: ";",
+  keepEmpty: true,
   morphTitles: true,
   titleInline: true,
   titleHeader: true,
@@ -91,6 +96,7 @@ export default class MorphTextPlugin extends Plugin {
       this.settings.distinctTitleSeparator = this.settings.titleSeparator !== this.settings.separator;
     }
     if (!(STYLES as readonly string[]).includes(this.settings.style)) this.settings.style = "morph";
+    if (!(ALIGNS as readonly string[]).includes(this.settings.align)) this.settings.align = "center";
     this.appliedSeparator = this.settings.separator;
     this.appliedTitleSeparator = this.titleSep();
     this.installFilter();
@@ -115,16 +121,9 @@ export default class MorphTextPlugin extends Plugin {
 
     this.addCommand({
       id: "insert-morph-set",
-      name: "Insert morph set (wraps selection)",
-      editorCallback: (editor: Editor) => this.insertInline(editor),
+      name: "Insert morph set",
+      editorCallback: (editor: Editor) => this.insertMorphSet(editor),
       hotkeys: [{ modifiers: ["Mod", "Shift"], key: "m" }],
-    });
-
-    this.addCommand({
-      id: "convert-slash-pipe-list",
-      name: "Convert slash or pipe list to morph set",
-      editorCallback: (editor: Editor) => this.convertSlashPipeList(editor),
-      hotkeys: [{ modifiers: ["Mod", "Shift"], key: "/" }],
     });
 
     this.addSettingTab(new MorphSettingTab(this.app, this));
@@ -269,7 +268,7 @@ export default class MorphTextPlugin extends Plugin {
       const m = matches[i];
       if (m.index === undefined) continue;
       const raw = useSource ? sourceMatches[i][1] : m[1];
-      let spec = parseSpec(raw, this.settings.separator);
+      let spec = parseSpec(raw, this.settings.separator, this.settings.keepEmpty);
       if (!spec.items.length) continue;
       if (useSource && info?.text && sourceMatches[i].index !== undefined) {
         const sm = sourceMatches[i];
@@ -320,7 +319,7 @@ export default class MorphTextPlugin extends Plugin {
     let last = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(text))) {
-      const spec = parseSpec(m[1], sep);
+      const spec = parseSpec(m[1], sep, this.settings.keepEmpty);
       if (!spec.items.length) continue;
       frag.append(text.slice(last, m.index));
       const handle = createMorph(spec, this.settings);
@@ -456,46 +455,52 @@ export default class MorphTextPlugin extends Plugin {
 
   // ───────────────────────── commands ─────────────────────────
 
+  private wrapLine(raw: string): string {
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed.startsWith("{~")) return raw;
+    const parts = this.listParts(trimmed);
+    if (!parts) return raw;
+    const sep = this.settings.separator || ";";
+    const lead = raw.match(/^\s*/)?.[0] ?? "";
+    const trail = raw.match(/\s*$/)?.[0] ?? "";
+    return `${lead}{~ ${parts.join(` ${sep} `)} ~}${trail}`;
+  }
+
+  private insertMorphSet(editor: Editor) {
+    const sel = editor.getSelection();
+    if (sel) {
+      if (sel.includes("\n")) {
+        const next = sel.split("\n").map((line) => this.wrapLine(line)).join("\n");
+        if (next !== sel) {
+          editor.replaceSelection(next);
+          return;
+        }
+      } else {
+        const converted = this.wrapLine(sel);
+        if (converted !== sel) {
+          editor.replaceSelection(converted);
+          return;
+        }
+      }
+    }
+    this.insertInline(editor);
+  }
+
   private insertInline(editor: Editor) {
     const sep = this.settings.separator.trim() || ";";
     const sel = editor.getSelection();
     if (sel) {
       const parts = (sel.includes("\n") ? sel.split("\n") : sel.includes(sep) ? sel.split(sep) : sel.split(","))
-        .map((s) => s.trim())
-        .filter(Boolean);
-      editor.replaceSelection(`{~ ${parts.join(` ${sep} `)} ~}`);
-      return;
+        .map((s) => s.trim());
+      if (this.settings.keepEmpty ? parts.some((p) => p.length) : parts.filter(Boolean).length) {
+        const items = this.settings.keepEmpty ? parts : parts.filter(Boolean);
+        editor.replaceSelection(`{~ ${items.join(` ${sep} `)} ~}`);
+        return;
+      }
     }
     const from = editor.getCursor("from");
     editor.replaceSelection(`{~  ${sep} ~}`);
     editor.setCursor({ line: from.line, ch: from.ch + 3 });
-  }
-
-  private convertSlashPipeList(editor: Editor) {
-    const sep = this.settings.separator || ";";
-    const wrapLine = (raw: string) => {
-      const trimmed = raw.trim();
-      if (!trimmed || trimmed.startsWith("{~")) return raw;
-      const parts = this.listParts(trimmed);
-      if (!parts) return raw;
-      const lead = raw.match(/^\s*/)?.[0] ?? "";
-      const trail = raw.match(/\s*$/)?.[0] ?? "";
-      return `${lead}{~ ${parts.join(sep)} ~}${trail}`;
-    };
-
-    const sel = editor.getSelection();
-    if (sel) {
-      const next = sel.includes("\n") ? sel.split("\n").map(wrapLine).join("\n") : wrapLine(sel);
-      if (next !== sel) editor.replaceSelection(next);
-      return;
-    }
-
-    const cur = editor.getCursor();
-    const line = editor.getLine(cur.line);
-    if (this.inMorphSpan(line, cur.ch)) return;
-    const next = wrapLine(line);
-    if (next === line) return;
-    editor.replaceRange(next, { line: cur.line, ch: 0 }, { line: cur.line, ch: line.length });
   }
 
   private listParts(text: string): string[] | null {
@@ -520,7 +525,7 @@ export default class MorphTextPlugin extends Plugin {
       prev = i + 1;
     }
     parts.push(text.slice(prev).trim());
-    const items = parts.filter(Boolean);
+    const items = this.settings.keepEmpty ? parts : parts.filter(Boolean);
     return items.length >= 2 ? items : null;
   }
 
@@ -607,6 +612,18 @@ class MorphSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
+      .setName("Alignment")
+      .setDesc("How morphemes sit in the space of the longest one. Override per set with align=.")
+      .addDropdown((dd) => {
+        for (const a of ALIGNS) dd.addOption(a, ALIGN_LABELS[a]);
+        dd.setValue(this.plugin.settings.align).onChange(async (v) => {
+          this.plugin.settings.align = v as Align;
+          await this.plugin.saveSettings();
+          this.updatePreview();
+        });
+      });
+
+    new Setting(containerEl)
       .setName("Metamorphosis duration")
       .setDesc("Interval in seconds during which metamorphosis takes place.")
       .addSlider((s) =>
@@ -648,6 +665,17 @@ class MorphSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
+      .setName("Keep empty morphemes")
+      .setDesc("When a set has empty slots next to filled ones, keep those empty slots in the animation.")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.keepEmpty).onChange(async (v) => {
+          this.plugin.settings.keepEmpty = v;
+          await this.plugin.saveSettings();
+          this.updatePreview();
+        })
+      );
+
+    new Setting(containerEl)
       .setName("Rewrite metamorphemes on separator change")
       .setDesc("Update separators inside existing metamorphemes across the vault.")
       .addToggle((t) =>
@@ -659,7 +687,7 @@ class MorphSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Auto-close {~  ~}")
-      .setDesc("When enabled, typing ~ inside {} inserts {~  ~} with the cursor in the middle.\nRequires `Editor → Auto pair brackets` global setting being enabled.")
+      .setDesc("When enabled, typing ~ inside {} inserts {~  ~} with the cursor in the middle. Requires `Settings → Editor → Auto pair brackets` being enabled.")
       .addToggle((t) =>
         t.setValue(this.plugin.settings.autoCloseMorph).onChange(async (v) => {
           this.plugin.settings.autoCloseMorph = v;
@@ -774,9 +802,21 @@ class MorphSettingTab extends PluginSettingTab {
       this.previews.push(handle);
       parent.appendChild(handle.el);
     };
-    add(host, ["Say", "Mean"]);
-    host.append(" what you ");
-    add(host, ["mean", "say"]);
+    const line = () => host.createDiv({ cls: "morph-preview-line" });
+    let row = line();
+    add(row, ["Prolix", "Verbose", "Diffuse"]);
+    row.append(" & ");
+    add(row, ["laconic", "concise"]);
+    row.append(".");
+    row = line();
+    add(row, ["This", "That"]);
+    row.append(" ain't ");
+    add(row, ["that", "this"]);
+    row.append(" or is it ?");
+    row = line();
+    row.append("For what you ");
+    add(row, ["can't quite", "won't yet", "may never"]);
+    row.append(" say.");
   }
 
   private commitTextOnLeave(input: HTMLInputElement, apply: (value: string) => void | Promise<void>) {
