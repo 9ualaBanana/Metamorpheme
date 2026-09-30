@@ -2,21 +2,23 @@
 
 **Superpose meanings that coincide.**
 
-![Say/Mean what you mean/say](vscode-file://vscode-app/c:/Users/9uala/OneDrive/Documents/ObsidianVaults/Gitsy/.obsidian/plugins/sememes/assets/say-what-you-mean.gif)
+![Say/Mean what you mean/say](assets/say-what-you-mean.gif)
 
 Vague by design.
 
 Linguistically, we like to think words have strict definitions. But in actual communication, words function exactly like clouds of states. They exist in superposition until context forces them to resolve.
 
+
+
 ## Syntax
 
-(Reading view and Live Preview). The default separator is `;`:
+Default separator is `;`:
 
 ```
 {~ align=justify ; Prolix ; Verbose ; Diffuse ~} & {~ laconic ; concise ~}.
 {~ Con ; Sub ; Pre ~}text: text was never just text.
 {~ This ; that ~} ain't {~ that ; this ~} or is it ?
-For what you {~ can't quite ; won't yet ; may never ~} say.
+What you {~ can't quite ; won't yet ; may never ~} say.
 {~ Unsaid ; Unspoken ; Untold ~} doesn't mean left out.
 
 {~ Leave ; Make ; Find ~} space for what one word couldn't carry.
@@ -32,6 +34,8 @@ For {~ hold=2 fade=1 align=left style=crossfade ; thought @3 ; idea @1.5/0.4 ~} 
 - First segment `hold= fade= style= align=` sets defaults for that set (`align`: left | center | right | justify). `justify` stretches shorter morphemes to the width of the longest one in the set.
 - Styles: `morph` (liquid), `crossfade`, `blur`, `slide`, `zoom`, `scramble`. The default is chosen in plugin settings; `style=` overrides it for one set.
 - Markdown inside a set still works, including a separate link on each morpheme: `{~ [[draft]] ; [[note]] ~}` or `{~ [one](url) ; [two](url) ~}`. Wrapping the whole set (`**{~ thought ; idea ~}**`) applies to every morpheme.
+
+
 
 ## Commands
 

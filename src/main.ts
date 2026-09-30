@@ -814,7 +814,7 @@ class MorphSettingTab extends PluginSettingTab {
     add(row, ["that", "this"]);
     row.append(" or is it ?");
     row = line();
-    row.append("For what you ");
+    row.append("What you ");
     add(row, ["can't quite", "won't yet", "may never"]);
     row.append(" say.");
   }
