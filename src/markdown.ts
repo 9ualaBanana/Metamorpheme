@@ -131,7 +131,7 @@ export async function hydrateMorphMarkdown(
         if (a.classList.contains("external-link") || /^https?:/i.test(href)) return;
         e.preventDefault();
         const mouse = e as MouseEvent;
-        app.workspace.openLinkText(href, sourcePath, mouse.metaKey || mouse.ctrlKey);
+        void app.workspace.openLinkText(href, sourcePath, mouse.metaKey || mouse.ctrlKey);
       });
     }
   }

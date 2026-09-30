@@ -172,17 +172,18 @@ function scramble(text: string, f: number): string {
 }
 
 export function createMorph(spec: Spec, d: Defaults): MorphHandle {
-  const el = document.createElement("span");
-  el.className = "morph-text";
-  el.setAttribute("aria-label", spec.items.map((i) => i.text).join(", "));
+  const el = createSpan({ cls: "morph-text" });
+  el.setAttr("aria-label", spec.items.map((i) => i.text).join(", "));
   const alignOf = (): Align => spec.align ?? d.align ?? "center";
   const justifyOf = (a: Align) =>
     a === "left" ? "start" : a === "right" ? "end" : a === "justify" ? "stretch" : "center";
-  el.style.setProperty("--morph-justify", justifyOf(alignOf() === "justify" ? "center" : alignOf()));
+  const place = () =>
+    el.setCssProps({ "--morph-justify": justifyOf(alignOf() === "justify" ? "center" : alignOf()) });
+  place();
   el.addEventListener("click", (e) => {
     const t = e.target;
-    if (!(t instanceof Element) || t.closest("a")) return;
-    const a = t.closest(".morph-word")?.querySelector("a");
+    if (!t || !("instanceOf" in t) || !(t as Node).instanceOf(Element) || (t as Element).closest("a")) return;
+    const a = (t as Element).closest(".morph-word")?.querySelector("a");
     if (!a) return;
     e.preventDefault();
     e.stopPropagation();
@@ -190,11 +191,8 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
   });
 
   const spans = spec.items.map((it) => {
-    const s = document.createElement("span");
-    s.className = "morph-word";
-    s.setAttribute("aria-hidden", "true");
-    s.textContent = it.text || "\u00a0";
-    el.appendChild(s);
+    const s = el.createSpan({ cls: "morph-word", attr: { "aria-hidden": "true" } });
+    s.setText(it.text || "\u00a0");
     return s;
   });
 
@@ -241,17 +239,21 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
     return n;
   };
 
+  const letterSpacing = (s: HTMLElement, value: string) => {
+    s.setCssStyles({ letterSpacing: value });
+  };
+
   const naturalWidth = (s: HTMLElement) => {
     const prev = s.style.letterSpacing;
-    s.style.letterSpacing = "0";
+    letterSpacing(s, "0");
     const w = s.scrollWidth;
-    s.style.letterSpacing = prev;
+    letterSpacing(s, prev);
     return w;
   };
 
   const fit = () => {
     if (alignOf() !== "justify") {
-      for (const s of spans) s.style.letterSpacing = "";
+      for (const s of spans) letterSpacing(s, "");
       return;
     }
     if (!el.isConnected) {
@@ -265,14 +267,14 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
     for (const s of spans) {
       const w = naturalWidth(s);
       const gaps = Math.max(0, glyphCount(s) - 1);
-      s.style.letterSpacing = gaps && w + 0.5 < wide ? `${(wide - w) / gaps}px` : "0";
+      letterSpacing(s, gaps && w + 0.5 < wide ? `${(wide - w) / gaps}px` : "0");
     }
   };
 
   const show = (k: number) => {
     const st = style();
     el.dataset.style = st;
-    el.style.setProperty("--morph-justify", justifyOf(alignOf() === "justify" ? "center" : alignOf()));
+    place();
     spans.forEach((s, idx) => {
       apply(st, s, idx === k ? 1 : 0, true);
       restore(s, idx);

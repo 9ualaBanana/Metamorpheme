@@ -9,8 +9,9 @@ type Destroyable = HTMLElement & { __morphDestroy?: () => void };
 
 function linkFromPointer(event: Event): HTMLElement | null {
   const from = (n: EventTarget | null): HTMLElement | null => {
-    if (!(n instanceof HTMLElement)) return null;
-    return n.closest("a, .internal-link, .external-link, button, input, textarea, .internal-embed");
+    const node = n as Node | null;
+    if (!node || !("instanceOf" in node) || !node.instanceOf(HTMLElement)) return null;
+    return node.closest("a, .internal-link, .external-link, button, input, textarea, .internal-embed");
   };
   for (const n of event.composedPath()) {
     const hit = from(n);
@@ -62,7 +63,7 @@ class MorphWidget extends WidgetType {
     if (!("clientX" in event)) return false;
     const { clientX, clientY } = event as MouseEvent;
     return document.elementsFromPoint(clientX, clientY).some(
-      (n) => n instanceof HTMLElement && n.classList.contains("morph-word") && n.querySelector("a")
+      (n) => n.instanceOf(HTMLElement) && n.classList.contains("morph-word") && n.querySelector("a")
     );
   }
 }

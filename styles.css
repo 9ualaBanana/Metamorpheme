@@ -33,6 +33,10 @@
   margin: 0;
 }
 
+.setting-item.morph-preview-setting {
+  display: block;
+}
+
 .morph-block {
   text-align: center;
   font-size: 1.7em;
