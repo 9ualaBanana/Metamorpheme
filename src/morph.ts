@@ -211,15 +211,15 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
   let timer = 0;
   let raf = 0;
   let clock: Window = window;
-  let htmlSnap: string[] | null = null;
+  let htmlSnap: Node[][] | null = null;
 
   const captureContent = () => {
-    htmlSnap = spans.map((s) => s.innerHTML);
+    htmlSnap = spans.map((s) => Array.from(s.childNodes).map((n) => n.cloneNode(true)));
   };
 
   const restore = (s: HTMLElement, idx: number) => {
     if (htmlSnap) {
-      if (s.innerHTML !== htmlSnap[idx]) s.innerHTML = htmlSnap[idx];
+      s.replaceChildren(...htmlSnap[idx].map((n) => n.cloneNode(true)));
       return;
     }
     const text = spec.items[idx].text;

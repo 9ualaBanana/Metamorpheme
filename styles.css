@@ -1,4 +1,9 @@
-/* Morph Text — words stack in one grid cell, so the widget is as wide as the longest word. */
+.morph-svg-filter {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
 .morph-text {
   display: inline-grid;
   vertical-align: baseline;

@@ -39,6 +39,6 @@ For {~ hold=2 fade=1 align=left style=crossfade ; thought @3 ; idea @1.5/0.4 ~} 
 
 ## Commands
 
-- **Insert morph set** — `Cmd/Ctrl+Shift+M`. If the selection is a slash or pipe list (`a|b|c` or `a/b/c`, including markdown links), it becomes `{~~}`. Otherwise it wraps the selection, or inserts an empty set.
+- **Insert morph set** — assign a hotkey in Settings → Hotkeys. If the selection is a slash or pipe list (`a|b|c` or `a/b/c`, including markdown links), it becomes `{~~}`. Otherwise it wraps the selection, or inserts an empty set.
 
 Typing `{` still auto-closes `}` when **Settings → Editor → Auto pair brackets** is on. Typing `~` between `{|}` then inserts `{ ~ | ~}` with the cursor in the middle. Turn this off in plugin settings, or by disabling auto-pair brackets globally.

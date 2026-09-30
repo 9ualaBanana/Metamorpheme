@@ -123,7 +123,6 @@ export default class MorphTextPlugin extends Plugin {
       id: "insert-morph-set",
       name: "Insert morph set",
       editorCallback: (editor: Editor) => this.insertMorphSet(editor),
-      hotkeys: [{ modifiers: ["Mod", "Shift"], key: "m" }],
     });
 
     this.addSettingTab(new MorphSettingTab(this.app, this));
@@ -183,11 +182,11 @@ export default class MorphTextPlugin extends Plugin {
   private async rewriteNoteSeparators(from: string, to: string): Promise<number> {
     let changed = 0;
     for (const file of this.app.vault.getMarkdownFiles()) {
-      const data = await this.app.vault.read(file);
-      const next = rewriteMorphSeparators(data, from, to);
-      if (next === data) continue;
-      await this.app.vault.modify(file, next);
-      changed++;
+      await this.app.vault.process(file, (data) => {
+        const next = rewriteMorphSeparators(data, from, to);
+        if (next !== data) changed++;
+        return next;
+      });
     }
     return changed;
   }
@@ -229,14 +228,23 @@ export default class MorphTextPlugin extends Plugin {
   private installFilter() {
     const ns = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(ns, "svg");
-    svg.setAttribute("width", "0");
-    svg.setAttribute("height", "0");
     svg.setAttribute("aria-hidden", "true");
-    svg.style.position = "absolute";
-    svg.innerHTML =
-      `<defs><filter id="${FILTER_ID}" x="-20%" y="-60%" width="140%" height="220%" color-interpolation-filters="sRGB">` +
-      `<feColorMatrix in="SourceGraphic" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 255 -140"/>` +
-      `</filter></defs>`;
+    svg.setAttribute("class", "morph-svg-filter");
+    const defs = document.createElementNS(ns, "defs");
+    const filter = document.createElementNS(ns, "filter");
+    filter.setAttribute("id", FILTER_ID);
+    filter.setAttribute("x", "-20%");
+    filter.setAttribute("y", "-60%");
+    filter.setAttribute("width", "140%");
+    filter.setAttribute("height", "220%");
+    filter.setAttribute("color-interpolation-filters", "sRGB");
+    const matrix = document.createElementNS(ns, "feColorMatrix");
+    matrix.setAttribute("in", "SourceGraphic");
+    matrix.setAttribute("type", "matrix");
+    matrix.setAttribute("values", "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 255 -140");
+    filter.appendChild(matrix);
+    defs.appendChild(filter);
+    svg.appendChild(defs);
     document.body.appendChild(svg);
     this.svg = svg;
   }
@@ -728,7 +736,7 @@ class MorphSettingTab extends PluginSettingTab {
           })
         ),
       new Setting(containerEl)
-        .setName("Tab & Header")
+        .setName("Tab and header")
         .setDesc("The title shown in the tab and in the note header.")
         .addToggle((t) =>
           t.setValue(this.plugin.settings.titleHeader).onChange(async (v) => {
