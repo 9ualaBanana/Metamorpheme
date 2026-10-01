@@ -6,24 +6,23 @@ import {
   whenAttached,
 } from "./animation-clock";
 
-export const STYLES = ["morph", "crossfade", "blur", "slide", "zoom", "scramble"] as const;
+export const STYLES = ["zoom", "blur", "slide", "crossfade", "diffuse"] as const;
 export type Style = (typeof STYLES)[number];
-export const ALIGNS = ["left", "center", "right", "justify"] as const;
+export const ALIGNS = ["center", "justify", "left", "right"] as const;
 export type Align = (typeof ALIGNS)[number];
 export const ALIGN_LABELS: Record<Align, string> = {
-  left: "Left",
   center: "Center",
-  right: "Right",
   justify: "Justify",
+  left: "Left",
+  right: "Right",
 };
 
 export const STYLE_LABELS: Record<Style, string> = {
-  morph: "Liquid morph",
-  crossfade: "Crossfade",
-  blur: "Blur focus",
-  slide: "Slide up",
   zoom: "Zoom",
-  scramble: "Scramble",
+  blur: "Blur focus",
+  crossfade: "Crossfade",
+  slide: "Slide up",
+  diffuse: "Diffuse",
 };
 
 export interface Defaults {
@@ -34,7 +33,6 @@ export interface Defaults {
   style: Style;
   align: Align;
   separator: string;
-  keepEmpty: boolean;
 }
 
 export interface Item {
@@ -75,7 +73,7 @@ function num(v: string | undefined): number | undefined {
  * Parses the inside of `{~ ... ~}`:
  *   [hold=2 fade=1 style=slide align=left |] word [@hold[/fade]] | word [@hold[/fade]] | ...
  */
-export function parseSpec(raw: string, separator: string, keepEmpty = true): Spec {
+export function parseSpec(raw: string, separator: string): Spec {
   const parts = raw.split(separator).map((p) => p.replace(/\\\s*$/, "").trim());
   const spec: Spec = { items: [] };
 
@@ -86,14 +84,17 @@ export function parseSpec(raw: string, separator: string, keepEmpty = true): Spe
       const val = m[2].toLowerCase();
       if (key === "hold") spec.hold = num(m[2]);
       else if (key === "fade") spec.fade = num(m[2]);
-      else if (key === "style" && (STYLES as readonly string[]).includes(val)) spec.style = val as Style;
+      else if (key === "style") {
+        const style = val === "morph" ? "diffuse" : val;
+        if ((STYLES as readonly string[]).includes(style)) spec.style = style as Style;
+      }
       else if (key === "align" && (ALIGNS as readonly string[]).includes(val)) spec.align = val as Align;
     }
   }
 
   for (const p of parts) {
     if (!p) {
-      if (keepEmpty) spec.items.push({ text: "" });
+      spec.items.push({ text: "" });
       continue;
     }
     const m = ITEM.exec(p);
@@ -103,7 +104,7 @@ export function parseSpec(raw: string, separator: string, keepEmpty = true): Spe
       spec.items.push({ text: p });
     }
   }
-  if (keepEmpty && spec.items.length && spec.items.every((it) => !it.text)) spec.items = [];
+  if (spec.items.length && spec.items.every((it) => !it.text)) spec.items = [];
   return spec;
 }
 
@@ -131,11 +132,11 @@ function apply(style: Style, span: HTMLElement, f: number, incoming: boolean) {
     return;
   }
   if (hasLink) {
-    s.opacity = String(style === "morph" ? Math.pow(f, 0.4) : f);
+    s.opacity = String(style === "diffuse" ? Math.pow(f, 0.4) : f);
     return;
   }
   switch (style) {
-    case "morph": {
+    case "diffuse": {
       const blur = Math.min(8 / f - 8, 100);
       const extra = blur > 0.01 ? blur : 0.6;
       s.filter = `url(#${FILTER_ID}) blur(${extra}px)`;
@@ -160,23 +161,9 @@ function apply(style: Style, span: HTMLElement, f: number, incoming: boolean) {
       s.opacity = String(f);
       break;
     }
-    case "scramble":
-      // outgoing word vanishes in the first half; incoming is drawn by scramble()
-      s.opacity = incoming ? "1" : String(Math.max(0, (f - 0.5) * 2));
-      break;
     default:
       s.opacity = String(f);
   }
-}
-
-const GLYPHS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&*+=?";
-
-function scramble(text: string, f: number): string {
-  const chars = Array.from(text);
-  const done = Math.floor(f * chars.length);
-  return chars
-    .map((c, k) => (k < done || /\s/.test(c) ? c : GLYPHS[Math.floor(Math.random() * GLYPHS.length)]))
-    .join("");
 }
 
 export function createMorph(spec: Spec, d: Defaults): MorphHandle {
@@ -205,7 +192,7 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
   });
 
   const n = spans.length;
-  const style = (): Style => (reducedMotion(elementWindow(el)) ? "crossfade" : spec.style ?? d.style ?? "morph");
+  const style = (): Style => (reducedMotion(elementWindow(el)) ? "crossfade" : spec.style ?? d.style ?? "diffuse");
   const holdMs = (k: number) => Math.max(0, spec.items[k].hold ?? spec.hold ?? d.hold) * 1000;
   const fadeMs = (k: number) => Math.max(0.05, spec.items[k].fade ?? spec.fade ?? d.fade) * 1000;
 
@@ -300,17 +287,12 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
     const st = style();
     el.dataset.style = st;
     const t0 = elementWindow(el).performance.now();
-    let lastScramble = 0;
     const step = (now: number) => {
       if (dead || !running) return;
       const f = Math.min(1, (now - t0) / dur);
-      const e = st === "morph" || st === "scramble" ? f : f * f * (3 - 2 * f);
+      const e = st === "diffuse" ? f : f * f * (3 - 2 * f);
       apply(st, spans[from], 1 - e, false);
       apply(st, spans[to], e, true);
-      if (st === "scramble" && !htmlSnap && f < 1 && now - lastScramble > 50) {
-        spans[to].textContent = scramble(spec.items[to].text, f);
-        lastScramble = now;
-      }
       if (f < 1) {
         cancelFrame = requestElementFrame(el, step);
       } else {

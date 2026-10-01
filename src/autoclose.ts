@@ -6,12 +6,12 @@ export function autoPairBracketsOn(app: App): boolean {
   return vault.getConfig?.("autoPairBrackets") !== false;
 }
 
-export function morphAutoClose(enabled: () => boolean, app: App) {
+export function morphAutoClose(app: App) {
   return keymap.of([
     {
       key: "~",
       run(view) {
-        if (!enabled() || !autoPairBracketsOn(app)) return false;
+        if (!autoPairBracketsOn(app)) return false;
         const { state } = view;
         const sel = state.selection.main;
         if (!sel.empty) return false;

@@ -125,7 +125,7 @@ export function morphLivePreview(d: Defaults, app: App, sourcePath: () => string
               const start = line.from + m.index;
               const end = start + m[0].length;
               if (selection.ranges.some((r) => r.from <= end && r.to >= start)) continue;
-              let spec = parseSpec(m[1], d.separator, d.keepEmpty);
+              let spec = parseSpec(m[1], d.separator);
               if (!spec.items.length) continue;
               if (inCode(view.state, start, end)) continue;
               const peeled = peelOuterMarkup(line.text.slice(0, m.index), line.text.slice(m.index + m[0].length));

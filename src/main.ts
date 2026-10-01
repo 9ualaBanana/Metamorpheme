@@ -27,35 +27,18 @@ import {
 } from "./morph";
 
 interface MorphSettings extends Defaults {
-  /** master switch for morphing note titles */
-  morphTitles: boolean;
-  /** morph the big inline title at the top of a note */
-  titleInline: boolean;
-  /** morph the tab title and the view-header title */
-  titleHeader: boolean;
-  /** morph file and folder names in the file explorer */
-  titleExplorer: boolean;
   distinctTitleSeparator: boolean;
   titleSeparator: string;
-  rewriteOnSeparatorChange: boolean;
-  autoCloseMorph: boolean;
 }
 
 const DEFAULTS: MorphSettings = {
   hold: 2,
   fade: 1,
-  style: "morph",
+  style: "zoom",
   align: "center",
   separator: ";",
-  keepEmpty: true,
-  morphTitles: true,
-  titleInline: true,
-  titleHeader: true,
-  titleExplorer: true,
   distinctTitleSeparator: false,
   titleSeparator: ";",
-  rewriteOnSeparatorChange: true,
-  autoCloseMorph: true,
 };
 
 const INLINE_TITLE_SEL = ".inline-title";
@@ -96,7 +79,10 @@ export default class MorphTextPlugin extends Plugin {
     if (typeof distinct !== "boolean") {
       this.settings.distinctTitleSeparator = this.settings.titleSeparator !== this.settings.separator;
     }
-    if (!(STYLES as readonly string[]).includes(this.settings.style)) this.settings.style = "morph";
+    const loadedStyle = this.settings.style as string;
+    if (loadedStyle === "morph" || !(STYLES as readonly string[]).includes(this.settings.style)) {
+      this.settings.style = "diffuse";
+    }
     if (!(ALIGNS as readonly string[]).includes(this.settings.align)) this.settings.align = "center";
     this.appliedSeparator = this.settings.separator;
     this.appliedTitleSeparator = this.titleSep();
@@ -116,9 +102,7 @@ export default class MorphTextPlugin extends Plugin {
         this
       )
     );
-    this.registerEditorExtension(
-      morphAutoClose(() => this.settings.autoCloseMorph, this.app)
-    );
+    this.registerEditorExtension(morphAutoClose(this.app));
 
     this.addCommand({
       id: "insert-morph-set",
@@ -153,12 +137,6 @@ export default class MorphTextPlugin extends Plugin {
     const notesTo = s.separator;
     const titlesFrom = this.appliedTitleSeparator;
     const titlesTo = this.titleSep();
-
-    if (!s.rewriteOnSeparatorChange) {
-      this.appliedSeparator = notesTo;
-      this.appliedTitleSeparator = titlesTo;
-      return;
-    }
 
     let notes = 0;
     let titles = 0;
@@ -277,7 +255,7 @@ export default class MorphTextPlugin extends Plugin {
       const m = matches[i];
       if (m.index === undefined) continue;
       const raw = useSource ? sourceMatches[i][1] : m[1];
-      let spec = parseSpec(raw, this.settings.separator, this.settings.keepEmpty);
+      let spec = parseSpec(raw, this.settings.separator);
       if (!spec.items.length) continue;
       if (useSource && info?.text && sourceMatches[i].index !== undefined) {
         const sm = sourceMatches[i];
@@ -328,7 +306,7 @@ export default class MorphTextPlugin extends Plugin {
     let last = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(text))) {
-      const spec = parseSpec(m[1], sep, this.settings.keepEmpty);
+      const spec = parseSpec(m[1], sep);
       if (!spec.items.length) continue;
       frag.append(text.slice(last, m.index));
       const handle = createMorph(spec, this.settings);
@@ -393,13 +371,11 @@ export default class MorphTextPlugin extends Plugin {
       }
     }
 
-    const s = this.settings;
-    if (!s.morphTitles) return;
-
-    const targets: HTMLElement[] = [];
-    if (s.titleInline) targets.push(...Array.from(document.querySelectorAll<HTMLElement>(INLINE_TITLE_SEL)));
-    if (s.titleHeader) targets.push(...Array.from(document.querySelectorAll<HTMLElement>(HEADER_TITLE_SEL)));
-    if (s.titleExplorer && withExplorer) {
+    const targets: HTMLElement[] = [
+      ...Array.from(document.querySelectorAll<HTMLElement>(INLINE_TITLE_SEL)),
+      ...Array.from(document.querySelectorAll<HTMLElement>(HEADER_TITLE_SEL)),
+    ];
+    if (withExplorer) {
       targets.push(...Array.from(document.querySelectorAll<HTMLElement>(EXPLORER_SEL)));
     }
     targets.forEach((el) => this.decorateTitle(el));
@@ -496,8 +472,8 @@ export default class MorphTextPlugin extends Plugin {
     if (sel) {
       const parts = (sel.includes("\n") ? sel.split("\n") : sel.includes(sep) ? sel.split(sep) : sel.split(","))
         .map((s) => s.trim());
-      if (this.settings.keepEmpty ? parts.some((p) => p.length) : parts.filter(Boolean).length) {
-        const items = this.settings.keepEmpty ? parts : parts.filter(Boolean);
+      if (parts.some((p) => p.length)) {
+        const items = parts;
         editor.replaceSelection(`{~ ${items.join(` ${sep} `)} ~}`);
         return;
       }
@@ -529,7 +505,7 @@ export default class MorphTextPlugin extends Plugin {
       prev = i + 1;
     }
     parts.push(text.slice(prev).trim());
-    const items = this.settings.keepEmpty ? parts : parts.filter(Boolean);
+    const items = parts;
     return items.length >= 2 ? items : null;
   }
 
@@ -599,55 +575,42 @@ class MorphSettingTab extends PluginSettingTab {
     for (const s of STYLES) styleOptions[s] = STYLE_LABELS[s];
     const alignOptions: Record<string, string> = {};
     for (const a of ALIGNS) alignOptions[a] = ALIGN_LABELS[a];
-    const titlesOn = () => this.plugin.settings.morphTitles;
-    const showTitleSep = () => titlesOn() && this.plugin.settings.distinctTitleSeparator;
+    const showTitleSep = () => this.plugin.settings.distinctTitleSeparator;
     return [
       {
-        type: "group",
-        heading: "Metamorphosis",
-        items: [
-          {
-            name: "Metamorphosis style",
-            desc: "Default metamorphosis animation.",
-            control: { type: "dropdown", key: "style", options: styleOptions },
-          },
-          {
-            name: "Alignment",
-            desc: "How morphemes sit in the space of the longest one. Override per set with align=.",
-            control: { type: "dropdown", key: "align", options: alignOptions },
-          },
-          {
-            name: "Metamorphosis duration",
-            desc: "Interval in seconds during which metamorphosis takes place.",
-            control: { type: "slider", key: "fade", min: 0.1, max: 5, step: 0.1 },
-          },
-          {
-            name: "No metamorphosis duration",
-            desc: "Interval in seconds during which morpheme stays visible before metamorphosis takes place.",
-            control: { type: "slider", key: "hold", min: 0.2, max: 10, step: 0.1 },
-          }
-        ],
+        name: "Metamorphosis style",
+        desc: "Default metamorphosis animation.",
+        control: { type: "dropdown", key: "style", options: styleOptions },
       },
       {
-        type: "group",
-        heading: "Preview",
-        items: [
-          {
-            name: "Preview",
-            searchable: false,
-            render: (setting) => {
-              setting.settingEl.addClass("morph-preview-setting");
-              setting.infoEl.hide();
-              setting.controlEl.hide();
-              const host = setting.settingEl.createDiv({ cls: "morph-block" });
-              this.fillPreview(host);
-              return () => {
-                this.previews.forEach((h) => h.destroy());
-                this.previews = [];
-              };
-            },
-          },
-        ],
+        name: "Alignment",
+        desc: "How morphemes sit in the space of the longest one. Override per set with align=.",
+        control: { type: "dropdown", key: "align", options: alignOptions },
+      },
+      {
+        name: "Metamorphosis duration",
+        desc: "Interval in seconds during which metamorphosis takes place.",
+        control: { type: "slider", key: "fade", min: 0.1, max: 5, step: 0.1 },
+      },
+      {
+        name: "No metamorphosis duration",
+        desc: "Interval in seconds during which morpheme stays visible before metamorphosis takes place.",
+        control: { type: "slider", key: "hold", min: 0.2, max: 10, step: 0.1 },
+      },
+      {
+        name: "Preview",
+        searchable: false,
+        render: (setting) => {
+          setting.settingEl.addClass("morph-preview-setting");
+          setting.infoEl.hide();
+          setting.controlEl.hide();
+          const host = setting.settingEl.createDiv({ cls: "morph-block" });
+          this.fillPreview(host);
+          return () => {
+            this.previews.forEach((h) => h.destroy());
+            this.previews = [];
+          };
+        },
       },
       {
         name: "Morphemes separator",
@@ -665,91 +628,36 @@ class MorphSettingTab extends PluginSettingTab {
         },
       },
       {
-        name: "Keep empty morphemes",
-        desc: "When a set has empty slots next to filled ones, keep those empty slots in the animation.",
-        control: { type: "toggle", key: "keepEmpty" },
+        name: "Use different separator",
+        desc: "Use different morphemes separator for titles.",
+        control: { type: "toggle", key: "distinctTitleSeparator" },
       },
       {
-        name: "Rewrite metamorphemes on separator change",
-        desc: "Update separators inside existing metamorphemes across the vault.",
-        control: { type: "toggle", key: "rewriteOnSeparatorChange" },
-      },
-      {
-        name: "Auto-close {~  ~}",
-        desc: "When enabled, typing ~ inside {} inserts {~  ~} with the cursor in the middle. Requires `Settings → Editor → Auto pair brackets` being enabled.",
-        control: { type: "toggle", key: "autoCloseMorph" },
-      },
-      {
-        type: "group",
-        heading: "Titles",
-        items: [
-          {
-            name: "Morph note titles",
-            desc: "Master switch for morphing note titles.",
-            control: { type: "toggle", key: "morphTitles" },
-          },
-          {
-            name: "Editor",
-            desc: "The title at the top of the note editor.",
-            visible: titlesOn,
-            control: { type: "toggle", key: "titleInline" },
-          },
-          {
-            name: "Tab and header",
-            desc: "The title shown in the tab and in the note header.",
-            visible: titlesOn,
-            control: { type: "toggle", key: "titleHeader" },
-          },
-          {
-            name: "File explorer",
-            desc: "File and folder names in the sidebar.",
-            visible: titlesOn,
-            control: { type: "toggle", key: "titleExplorer" },
-          },
-          {
-            name: "Use different separator",
-            desc: "Use different morphemes separator for titles.",
-            visible: titlesOn,
-            control: { type: "toggle", key: "distinctTitleSeparator" },
-          },
-          {
-            name: "Morphemes separator",
-            desc: 'Symbol to separate morphemes in note titles. Forbidden symbols: * " \\ / < > : | ? # ^ [ ].',
-            visible: showTitleSep,
-            render: (setting) => {
-              setting.addText((t) => {
-                t.setValue(this.plugin.settings.titleSeparator).setPlaceholder(";");
-                this.commitTextOnLeave(t.inputEl, async (v) => {
-                  if (this.plugin.settings.titleSeparator === v) return;
-                  this.plugin.settings.titleSeparator = v;
-                  await this.plugin.saveSettings();
-                  this.plugin.refreshTitles();
-                  await this.plugin.flushSeparatorRewrite();
-                });
-              });
-            },
-          },
-        ],
+        name: "Morphemes separator",
+        desc: 'Symbol to separate morphemes in note titles. Forbidden symbols: * " \\ / < > : | ? # ^ [ ].',
+        visible: showTitleSep,
+        render: (setting) => {
+          setting.addText((t) => {
+            t.setValue(this.plugin.settings.titleSeparator).setPlaceholder(";");
+            this.commitTextOnLeave(t.inputEl, async (v) => {
+              if (this.plugin.settings.titleSeparator === v) return;
+              this.plugin.settings.titleSeparator = v;
+              await this.plugin.saveSettings();
+              this.plugin.refreshTitles();
+              await this.plugin.flushSeparatorRewrite();
+            });
+          });
+        },
       },
     ];
   }
 
   override async setControlValue(key: string, value: unknown): Promise<void> {
-    const settings = this.plugin.settings;
-    if (key === "morphTitles" && value === true) {
-      settings.titleInline = true;
-      settings.titleHeader = true;
-      settings.titleExplorer = true;
-      settings.distinctTitleSeparator = false;
-    }
     await super.setControlValue(key, value);
-    if (key === "style" || key === "align" || key === "fade" || key === "hold" || key === "keepEmpty") {
+    if (key === "style" || key === "align" || key === "fade" || key === "hold") {
       this.updatePreview();
     }
-    if (key === "titleInline" || key === "titleHeader" || key === "titleExplorer") {
-      this.plugin.refreshTitles();
-    }
-    if (key === "morphTitles" || key === "distinctTitleSeparator") {
+    if (key === "distinctTitleSeparator") {
       this.refreshDomState();
       this.plugin.refreshTitles();
       await this.plugin.flushSeparatorRewrite();
