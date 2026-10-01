@@ -1,0 +1,21 @@
+---
+description: Morph animations must use the element's own window clock
+alwaysApply: true
+---
+
+# Animation clock
+
+Before changing morph playback, timers, live preview, titles, settings preview, or `whenAttached`, read `docs/animation-clock.md` and follow it.
+
+- Schedule morph timeouts, frames, and visibility only through `src/animation-clock.ts`.
+- Do not call `setTimeout`, `requestAnimationFrame`, or `IntersectionObserver` on a morph, and do not cache `window` from `createMorph` time.
+- The settings preview must keep animating when the editor window is covered. That is the regression check.
+
+```typescript
+// BAD — window captured while the element is still in the editor
+const clock = window;
+clock.requestAnimationFrame(step);
+
+// GOOD — window read when the frame is requested, after append
+requestElementFrame(el, step);
+```

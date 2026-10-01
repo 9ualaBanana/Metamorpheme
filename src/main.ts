@@ -10,6 +10,7 @@ import {
   TFile,
 } from "obsidian";
 import { morphLivePreview } from "./livepreview";
+import { watchExplorerTitles } from "./note-open";
 import { morphAutoClose } from "./autoclose";
 import { applyOuterMarkup, hydrateMorphMarkdown, markupFromAncestors, peelOuterMarkup } from "./markdown";
 import {
@@ -351,28 +352,23 @@ export default class MorphTextPlugin extends Plugin {
       this.titleTimer = window.setTimeout(() => this.scanTitles(), delay);
     };
 
-    this.registerEvent(this.app.workspace.on("layout-change", () => schedule()));
+    const explorerTitles = watchExplorerTitles(this.app.workspace.containerEl, () => schedule(100));
+
+    this.registerEvent(this.app.workspace.on("layout-change", () => {
+      explorerTitles.followFileExplorer();
+      schedule();
+    }));
     this.registerEvent(this.app.workspace.on("active-leaf-change", () => schedule()));
     this.registerEvent(this.app.workspace.on("file-open", () => schedule()));
     this.registerEvent(this.app.vault.on("rename", () => schedule()));
-    this.app.workspace.onLayoutReady(() => schedule());
+    this.app.workspace.onLayoutReady(() => {
+      explorerTitles.followFileExplorer();
+      schedule();
+    });
 
-    // Obsidian re-renders titles on its own schedule; this cheap rescan is the safety net.
-    // (The file explorer can be huge, so it is handled by the observer below instead.)
     this.registerInterval(window.setInterval(() => this.scanTitles(false), 2000));
 
-    // File explorer: rows appear when folders expand, sort or filter, so watch for them.
-    const explorerObserver = new MutationObserver((records) => {
-      const relevant = records.some((r) => {
-        const el = r.target.instanceOf(Element) ? r.target : r.target.parentElement;
-        return !!el && !el.closest(".morph-text") && !!el.closest('[data-type="file-explorer"]');
-      });
-      if (relevant) schedule(100);
-    });
-    this.app.workspace.onLayoutReady(() =>
-      explorerObserver.observe(this.app.workspace.containerEl, { childList: true, subtree: true })
-    );
-    this.register(() => explorerObserver.disconnect());
+    this.register(() => explorerTitles.stop());
 
     // Editing a title: show the real file name while focused, morph again afterwards.
     this.registerDomEvent(document, "focusin", (e: FocusEvent) => {

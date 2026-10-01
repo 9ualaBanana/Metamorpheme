@@ -4,6 +4,7 @@ import { EditorState, RangeSetBuilder } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
 import { hydrateMorphMarkdown, peelOuterMarkup, applyOuterMarkup } from "./markdown";
 import { createMorph, Defaults, parseSpec, Spec } from "./morph";
+import { rebuildLivePreview } from "./note-open";
 
 type Destroyable = HTMLElement & { __morphDestroy?: () => void };
 
@@ -98,11 +99,7 @@ export function morphLivePreview(d: Defaults, app: App, sourcePath: () => string
       }
 
       update(u: ViewUpdate) {
-        const modeChanged =
-          u.startState.field(editorLivePreviewField, false) !== u.state.field(editorLivePreviewField, false);
-        if (u.docChanged || u.viewportChanged || u.selectionSet || modeChanged) {
-          this.decorations = this.build(u.view);
-        }
+        if (rebuildLivePreview(u)) this.decorations = this.build(u.view);
       }
 
       build(view: EditorView): DecorationSet {

@@ -1,3 +1,11 @@
+import {
+  elementWindow,
+  requestElementFrame,
+  requestElementTimeout,
+  watchElementVisibility,
+  whenAttached,
+} from "./animation-clock";
+
 export const STYLES = ["morph", "crossfade", "blur", "slide", "zoom", "scramble"] as const;
 export type Style = (typeof STYLES)[number];
 export const ALIGNS = ["left", "center", "right", "justify"] as const;
@@ -197,8 +205,7 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
   });
 
   const n = spans.length;
-  const host = () => el.ownerDocument.defaultView ?? window;
-  const style = (): Style => (reducedMotion(host()) ? "crossfade" : spec.style ?? d.style ?? "morph");
+  const style = (): Style => (reducedMotion(elementWindow(el)) ? "crossfade" : spec.style ?? d.style ?? "morph");
   const holdMs = (k: number) => Math.max(0, spec.items[k].hold ?? spec.hold ?? d.hold) * 1000;
   const fadeMs = (k: number) => Math.max(0.05, spec.items[k].fade ?? spec.fade ?? d.fade) * 1000;
 
@@ -206,9 +213,8 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
   let fading = false;
   let running = false;
   let dead = false;
-  let timer = 0;
-  let raf = 0;
-  let clock: Window = window;
+  let cancelHold = () => {};
+  let cancelFrame = () => {};
   let htmlSnap: Node[][] | null = null;
 
   const captureContent = () => {
@@ -252,16 +258,12 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
   };
 
   const fit = () => {
+    if (dead) return;
     if (alignOf() !== "justify") {
       for (const s of spans) letterSpacing(s, "");
       return;
     }
-    if (!el.isConnected) {
-      queueMicrotask(() => {
-        if (!dead) fit();
-      });
-      return;
-    }
+    if (!el.isConnected) return;
     const wide = Math.max(...spans.map(naturalWidth), 0);
     if (wide <= 0) return;
     for (const s of spans) {
@@ -271,6 +273,8 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
     }
   };
 
+  const fitOnceAttached = whenAttached(el, fit);
+
   const show = (k: number) => {
     const st = style();
     el.dataset.style = st;
@@ -279,12 +283,12 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
       apply(st, s, idx === k ? 1 : 0, true);
       restore(s, idx);
     });
-    fit();
+    fitOnceAttached.schedule();
   };
 
   const scheduleHold = (seed = false) => {
-    clock = host();
-    timer = clock.setTimeout(beginFade, holdMs(i) * (seed ? Math.random() : 1));
+    cancelHold();
+    cancelHold = requestElementTimeout(el, holdMs(i) * (seed ? Math.random() : 1), beginFade);
   };
 
   const beginFade = () => {
@@ -295,7 +299,7 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
     const dur = fadeMs(from);
     const st = style();
     el.dataset.style = st;
-    const t0 = clock.performance.now();
+    const t0 = elementWindow(el).performance.now();
     let lastScramble = 0;
     const step = (now: number) => {
       if (dead || !running) return;
@@ -308,7 +312,7 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
         lastScramble = now;
       }
       if (f < 1) {
-        raf = clock.requestAnimationFrame(step);
+        cancelFrame = requestElementFrame(el, step);
       } else {
         i = to;
         fading = false;
@@ -316,7 +320,7 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
         scheduleHold();
       }
     };
-    raf = clock.requestAnimationFrame(step);
+    cancelFrame = requestElementFrame(el, step);
   };
 
   const play = () => {
@@ -327,8 +331,8 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
 
   const pause = () => {
     running = false;
-    clock.clearTimeout(timer);
-    clock.cancelAnimationFrame(raf);
+    cancelHold();
+    cancelFrame();
     if (fading) {
       i = (i + 1) % n;
       fading = false;
@@ -337,21 +341,18 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
   };
 
   show(0);
-  queueMicrotask(fit);
 
-  let io: IntersectionObserver | undefined;
-  if (n > 1) {
-    queueMicrotask(() => {
-      if (dead) return;
-      const view = host();
-      io = new view.IntersectionObserver((entries) => {
-        const visible = entries[entries.length - 1].isIntersecting;
-        if (visible) play();
-        else pause();
-      });
-      io.observe(el);
+  let watching = false;
+  let stopWatch = () => {};
+  const playWhenVisible = whenAttached(el, () => {
+    if (dead || n < 2 || watching) return;
+    watching = true;
+    stopWatch = watchElementVisibility(el, (visible) => {
+      if (visible) play();
+      else pause();
     });
-  }
+  });
+  if (n > 1) playWhenVisible.schedule();
 
   return {
     el,
@@ -359,12 +360,14 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
     destroy: () => {
       dead = true;
       pause();
-      io?.disconnect();
+      fitOnceAttached.cancel();
+      playWhenVisible.cancel();
+      stopWatch();
     },
     captureContent,
     refresh: () => {
       show(i);
-      fit();
+      if (n > 1) playWhenVisible.schedule();
     },
     play,
   };
