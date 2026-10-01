@@ -603,24 +603,51 @@ class MorphSettingTab extends PluginSettingTab {
     const showTitleSep = () => titlesOn() && this.plugin.settings.distinctTitleSeparator;
     return [
       {
-        name: "Metamorphosis style",
-        desc: "Default metamorphosis animation.",
-        control: { type: "dropdown", key: "style", options: styleOptions },
+        type: "group",
+        heading: "Metamorphosis",
+        items: [
+          {
+            name: "Metamorphosis style",
+            desc: "Default metamorphosis animation.",
+            control: { type: "dropdown", key: "style", options: styleOptions },
+          },
+          {
+            name: "Alignment",
+            desc: "How morphemes sit in the space of the longest one. Override per set with align=.",
+            control: { type: "dropdown", key: "align", options: alignOptions },
+          },
+          {
+            name: "Metamorphosis duration",
+            desc: "Interval in seconds during which metamorphosis takes place.",
+            control: { type: "slider", key: "fade", min: 0.1, max: 5, step: 0.1 },
+          },
+          {
+            name: "No metamorphosis duration",
+            desc: "Interval in seconds during which morpheme stays visible before metamorphosis takes place.",
+            control: { type: "slider", key: "hold", min: 0.2, max: 10, step: 0.1 },
+          }
+        ],
       },
       {
-        name: "Alignment",
-        desc: "How morphemes sit in the space of the longest one. Override per set with align=.",
-        control: { type: "dropdown", key: "align", options: alignOptions },
-      },
-      {
-        name: "Metamorphosis duration",
-        desc: "Interval in seconds during which metamorphosis takes place.",
-        control: { type: "slider", key: "fade", min: 0.1, max: 5, step: 0.1 },
-      },
-      {
-        name: "No metamorphosis duration",
-        desc: "Interval in seconds during which morpheme stays visible before metamorphosis takes place.",
-        control: { type: "slider", key: "hold", min: 0.2, max: 10, step: 0.1 },
+        type: "group",
+        heading: "Preview",
+        items: [
+          {
+            name: "Preview",
+            searchable: false,
+            render: (setting) => {
+              setting.settingEl.addClass("morph-preview-setting");
+              setting.infoEl.hide();
+              setting.controlEl.hide();
+              const host = setting.settingEl.createDiv({ cls: "morph-block" });
+              this.fillPreview(host);
+              return () => {
+                this.previews.forEach((h) => h.destroy());
+                this.previews = [];
+              };
+            },
+          },
+        ],
       },
       {
         name: "Morphemes separator",
@@ -700,27 +727,6 @@ class MorphSettingTab extends PluginSettingTab {
                   await this.plugin.flushSeparatorRewrite();
                 });
               });
-            },
-          },
-        ],
-      },
-      {
-        type: "group",
-        heading: "Preview",
-        items: [
-          {
-            name: "Preview",
-            searchable: false,
-            render: (setting) => {
-              setting.settingEl.addClass("morph-preview-setting");
-              setting.infoEl.hide();
-              setting.controlEl.hide();
-              const host = setting.settingEl.createDiv({ cls: "morph-block" });
-              this.fillPreview(host);
-              return () => {
-                this.previews.forEach((h) => h.destroy());
-                this.previews = [];
-              };
             },
           },
         ],
