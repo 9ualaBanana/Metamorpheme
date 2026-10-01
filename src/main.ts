@@ -12,7 +12,8 @@ import {
 import { morphLivePreview } from "./livepreview";
 import { watchExplorerTitles } from "./note-open";
 import { morphAutoClose } from "./autoclose";
-import { applyOuterMarkup, hydrateMorphMarkdown, markupFromAncestors, peelOuterMarkup } from "./markdown";
+import { applyOuterMarkup, hydrateMorphMarkdown, peelOuterMarkup } from "./markdown";
+import { outerStyleFromSource, resolveOuterStyle } from "./outer-style";
 import {
   ALIGN_LABELS,
   ALIGNS,
@@ -259,11 +260,9 @@ export default class MorphTextPlugin extends Plugin {
       if (!spec.items.length) continue;
       if (useSource && info?.text && sourceMatches[i].index !== undefined) {
         const sm = sourceMatches[i];
-        const peeled = peelOuterMarkup(
-          info.text.slice(0, sm.index),
-          info.text.slice(sm.index + sm[0].length)
-        );
+        const peeled = peelOuterMarkup(info.text.slice(0, sm.index), info.text.slice(sm.index + sm[0].length));
         spec = applyOuterMarkup(spec, peeled.open, peeled.close);
+        spec.outerStyle = outerStyleFromSource(info.text, sm.index, sm.index + sm[0].length);
       }
       const from = indexAt(m.index);
       const to = indexAt(m.index + m[0].length);
@@ -279,10 +278,7 @@ export default class MorphTextPlugin extends Plugin {
       ctx.addChild(child);
       range.deleteContents();
       range.insertNode(handle.el);
-      if (!useSource) {
-        const peeled = markupFromAncestors(handle.el);
-        spec = applyOuterMarkup(spec, peeled.open, peeled.close);
-      }
+      spec.outerStyle = resolveOuterStyle(spec.outerStyle ?? [], handle.el);
       void hydrateMorphMarkdown(handle, spec, this.app, ctx.sourcePath, child);
     }
   }

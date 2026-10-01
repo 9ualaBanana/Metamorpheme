@@ -1,5 +1,6 @@
 import { App, Component, MarkdownRenderer } from "obsidian";
 import { MorphHandle, Spec } from "./morph";
+import { paintOuterStyle } from "./outer-style";
 
 export function unwrapRenderedMarkdown(el: HTMLElement) {
   while (el.children.length === 1 && el.firstElementChild?.tagName === "P") {
@@ -11,15 +12,6 @@ export function unwrapRenderedMarkdown(el: HTMLElement) {
     p.replaceWith(...Array.from(p.childNodes));
   }
 }
-
-const PAIRS = [
-  { open: "**", close: "**" },
-  { open: "__", close: "__" },
-  { open: "==", close: "==" },
-  { open: "~~", close: "~~" },
-  { open: "*", close: "*" },
-  { open: "_", close: "_" },
-];
 
 export function peelOuterMarkup(before: string, after: string): { open: string; close: string } {
   let left = before.replace(/\s+$/, "");
@@ -53,45 +45,6 @@ export function peelOuterMarkup(before: string, after: string): { open: string; 
       left = left.slice(0, -1);
       right = right.slice(mdLink[0].length);
       again = true;
-      continue;
-    }
-    for (const p of PAIRS) {
-      if (!left.endsWith(p.open) || !right.startsWith(p.close)) continue;
-      if (p.open === "*" && left.endsWith("**")) continue;
-      if (p.open === "_" && left.endsWith("__")) continue;
-      open = p.open + open;
-      close += p.close;
-      left = left.slice(0, -p.open.length);
-      right = right.slice(p.close.length);
-      again = true;
-      break;
-    }
-  }
-  return { open, close };
-}
-
-export function markupFromAncestors(el: HTMLElement): { open: string; close: string } {
-  let open = "";
-  let close = "";
-  for (let n = el.parentElement; n; n = n.parentElement) {
-    const tag = n.tagName;
-    if (tag === "A") break;
-    if (tag === "STRONG" || tag === "B") {
-      open = "**" + open;
-      close += "**";
-    } else if (tag === "EM" || tag === "I") {
-      open = "*" + open;
-      close += "*";
-    } else if (tag === "MARK") {
-      open = "==" + open;
-      close += "==";
-    } else if (tag === "DEL" || tag === "S") {
-      open = "~~" + open;
-      close += "~~";
-    } else if (n.classList.contains("cm-highlight") || n.classList.contains("cm-strong") || n.classList.contains("cm-em")) {
-      continue;
-    } else if (tag === "P" || tag === "DIV" || tag === "LI" || tag === "TD" || tag === "TH" || tag === "BODY") {
-      break;
     }
   }
   return { open, close };
@@ -119,10 +72,12 @@ export async function hydrateMorphMarkdown(
     const raw = spec.items[i].text;
     if (!raw) {
       span.textContent = "\u00a0";
+      paintOuterStyle(span, spec.outerStyle ?? []);
       continue;
     }
     await MarkdownRenderer.render(app, raw, span, sourcePath, owner);
     unwrapRenderedMarkdown(span);
+    paintOuterStyle(span, spec.outerStyle ?? []);
     for (const a of Array.from(span.querySelectorAll("a"))) {
       a.addEventListener("click", (e) => {
         e.stopPropagation();

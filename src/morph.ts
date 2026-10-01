@@ -5,6 +5,7 @@ import {
   watchElementVisibility,
   whenAttached,
 } from "./animation-clock";
+import type { OuterStyle } from "./outer-style";
 
 export const STYLES = ["zoom", "blur", "slide", "crossfade", "diffuse"] as const;
 export type Style = (typeof STYLES)[number];
@@ -47,6 +48,7 @@ export interface Spec {
   fade?: number;
   style?: Style;
   align?: Align;
+  outerStyle?: OuterStyle[];
 }
 
 export interface MorphHandle {

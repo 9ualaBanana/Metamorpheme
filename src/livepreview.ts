@@ -2,8 +2,10 @@ import { App, Component, editorLivePreviewField } from "obsidian";
 import { syntaxTree } from "@codemirror/language";
 import { EditorState, RangeSetBuilder } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
+import { whenAttached } from "./animation-clock";
 import { hydrateMorphMarkdown, peelOuterMarkup, applyOuterMarkup } from "./markdown";
 import { createMorph, Defaults, parseSpec, Spec } from "./morph";
+import { outerStyleFromSource, resolveOuterStyle } from "./outer-style";
 import { rebuildLivePreview } from "./note-open";
 
 type Destroyable = HTMLElement & { __morphDestroy?: () => void };
@@ -48,9 +50,20 @@ class MorphWidget extends WidgetType {
     const handle = createMorph(this.spec, this.d);
     const owner = new Component();
     this.host.addChild(owner);
-    void hydrateMorphMarkdown(handle, this.spec, this.app, this.sourcePath, owner);
+    let alive = true;
+    const attached = whenAttached(handle.el, () => {
+      if (!alive) return;
+      const spec = {
+        ...this.spec,
+        outerStyle: resolveOuterStyle(this.spec.outerStyle ?? [], handle.el),
+      };
+      void hydrateMorphMarkdown(handle, spec, this.app, this.sourcePath, owner);
+    });
+    attached.schedule();
     const el = handle.el as Destroyable;
     el.__morphDestroy = () => {
+      alive = false;
+      attached.cancel();
       handle.destroy();
       this.host.removeChild(owner);
     };
@@ -130,6 +143,7 @@ export function morphLivePreview(d: Defaults, app: App, sourcePath: () => string
               if (inCode(view.state, start, end)) continue;
               const peeled = peelOuterMarkup(line.text.slice(0, m.index), line.text.slice(m.index + m[0].length));
               spec = applyOuterMarkup(spec, peeled.open, peeled.close);
+              spec.outerStyle = outerStyleFromSource(line.text, m.index, m.index + m[0].length);
               builder.add(start, end, Decoration.replace({ widget: new MorphWidget(spec, d, app, path, host) }));
             }
           }
