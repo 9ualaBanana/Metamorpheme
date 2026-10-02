@@ -11,3 +11,5 @@ Every morph plays on the window that contains its element at the moment a timer 
 5. The settings preview must keep morphing while the editor window is covered. Chromium does not deliver frames for a covered window. A clock captured from the editor fails this check.
 
 A title rescan (`scanTitles`) is not a morph timer. It may use the editor window. Playback inside a title morph still follows this spec.
+
+The file explorer often inserts a title morph before that pane has a box (sidebar hidden, folder collapsed, list not laid out). The first visibility report is then hidden. A later show does not always produce a second report, so playback stays stopped while the inline title and the tab title, already on screen, keep playing. Re-arm with `watchElementVisibility` through `syncVisibility` when the explorer updates and, while playback is paused, on the title rescan. That reads the element's window again. It does not add a second clock.

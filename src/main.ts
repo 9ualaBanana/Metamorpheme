@@ -340,7 +340,10 @@ export default class MorphTextPlugin extends Plugin {
       schedule();
     });
 
-    this.registerInterval(window.setInterval(() => this.scanTitles(false), 2000));
+    this.registerInterval(window.setInterval(() => {
+      this.scanTitles(false);
+      this.syncExplorerTitlePlayback();
+    }, 2000));
 
     this.register(() => explorerTitles.stop());
 
@@ -381,7 +384,10 @@ export default class MorphTextPlugin extends Plugin {
     const existing = this.titles.get(el);
     if (existing) {
       const first = existing.handles[0]?.el;
-      if (first && first.isConnected && el.contains(first)) return; // still ours
+      if (first && first.isConnected && el.contains(first)) {
+        if (el.closest('[data-type="file-explorer"]')) this.syncExplorerTitlePlayback(el);
+        return;
+      }
       // Obsidian rewrote the element (rename, file switch): drop the stale state
       existing.handles.forEach((h) => h.destroy());
       this.titles.delete(el);
@@ -398,6 +404,14 @@ export default class MorphTextPlugin extends Plugin {
     el.empty();
     el.appendChild(built.frag);
     this.titles.set(el, { raw, handles: built.handles });
+  }
+
+  private syncExplorerTitlePlayback(only?: HTMLElement) {
+    for (const [el, st] of this.titles) {
+      if (only && el !== only) continue;
+      if (!el.isConnected || !el.closest('[data-type="file-explorer"]')) continue;
+      for (const handle of st.handles) handle.syncVisibility();
+    }
   }
 
   private restoreTitle(el: HTMLElement, placeCaret = false) {

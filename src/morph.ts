@@ -57,6 +57,7 @@ export interface MorphHandle {
   destroy: () => void;
   captureContent: () => void;
   refresh: () => void;
+  syncVisibility: () => void;
   play: () => void;
 }
 
@@ -326,12 +327,12 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
 
   show(0);
 
-  let watching = false;
   let stopWatch = () => {};
   const playWhenVisible = whenAttached(el, () => {
-    if (dead || n < 2 || watching) return;
-    watching = true;
+    if (dead || n < 2) return;
+    stopWatch();
     stopWatch = watchElementVisibility(el, (visible) => {
+      if (dead) return;
       if (visible) play();
       else pause();
     });
@@ -352,6 +353,10 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
     refresh: () => {
       show(i);
       if (n > 1) playWhenVisible.schedule();
+    },
+    syncVisibility: () => {
+      if (dead || running || n < 2) return;
+      playWhenVisible.schedule();
     },
     play,
   };
