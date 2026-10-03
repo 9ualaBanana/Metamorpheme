@@ -10,6 +10,7 @@ import {
   TFile,
 } from "obsidian";
 import { morphLivePreview } from "./livepreview";
+import { paintGraphLabels, restoreGraphLabels } from "./graph-labels";
 import { watchExplorerTitles } from "./note-open";
 import { morphAutoClose } from "./autoclose";
 import { applyOuterMarkup, hydrateMorphMarkdown, peelOuterMarkup } from "./markdown";
@@ -119,6 +120,7 @@ export default class MorphTextPlugin extends Plugin {
   onunload() {
     window.clearTimeout(this.titleTimer);
     this.restoreAllTitles();
+    restoreGraphLabels(this.app.workspace);
     this.svg?.remove();
   }
 
@@ -323,7 +325,10 @@ export default class MorphTextPlugin extends Plugin {
   private setupTitles() {
     const schedule = (delay = 120) => {
       window.clearTimeout(this.titleTimer);
-      this.titleTimer = window.setTimeout(() => this.scanTitles(), delay);
+      this.titleTimer = window.setTimeout(() => {
+        this.scanTitles();
+        paintGraphLabels(this.app.workspace);
+      }, delay);
     };
 
     const explorerTitles = watchExplorerTitles(this.app.workspace.containerEl, () => schedule(100));
@@ -343,6 +348,7 @@ export default class MorphTextPlugin extends Plugin {
     this.registerInterval(window.setInterval(() => {
       this.scanTitles(false);
       this.syncExplorerTitlePlayback();
+      paintGraphLabels(this.app.workspace);
     }, 2000));
 
     this.register(() => explorerTitles.stop());
