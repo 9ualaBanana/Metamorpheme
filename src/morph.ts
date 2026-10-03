@@ -1,10 +1,5 @@
-import {
-  elementWindow,
-  requestElementFrame,
-  requestElementTimeout,
-  watchElementVisibility,
-  whenAttached,
-} from "./animation-clock";
+import { watchElementVisibility, whenAttached } from "./animation-clock";
+import { fadeOf, holdOf, morphClock, morphStyle, playMorph, wordPaint, WordPaint } from "./morph-play";
 import type { OuterStyle } from "./outer-style";
 
 export const STYLES = ["zoom", "blur", "slide", "crossfade", "diffuse"] as const;
@@ -119,54 +114,22 @@ export function rewriteMorphSeparators(text: string, oldSep: string, newSep: str
   });
 }
 
-function reducedMotion(view: Window): boolean {
-  return view.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-}
-
-/** f = how visible the word is (0..1); incoming = true for the word appearing. */
-function apply(style: Style, span: HTMLElement, f: number, incoming: boolean) {
+function paintSpan(span: HTMLElement, word: WordPaint) {
   const s = span.style;
   const hasLink = !!span.querySelector("a");
   s.filter = "none";
   s.transform = "none";
-  s.pointerEvents = f > 0.35 ? "auto" : "none";
-  if (f <= 0.001) {
+  s.pointerEvents = word.hit ? "auto" : "none";
+  if (word.opacity <= 0.001) {
     s.opacity = "0";
     return;
   }
-  if (hasLink) {
-    s.opacity = String(style === "diffuse" ? Math.pow(f, 0.4) : f);
-    return;
-  }
-  switch (style) {
-    case "diffuse": {
-      const blur = Math.min(8 / f - 8, 100);
-      const extra = blur > 0.01 ? blur : 0.6;
-      s.filter = `url(#${FILTER_ID}) blur(${extra}px)`;
-      s.opacity = String(Math.pow(f, 0.4));
-      break;
-    }
-    case "blur": {
-      const blur = (1 - f) * 12;
-      if (blur > 0.05) s.filter = `blur(${blur}px)`;
-      s.opacity = String(f);
-      break;
-    }
-    case "slide": {
-      const dy = (1 - f) * 0.7 * (incoming ? 1 : -1);
-      s.transform = `translateY(${dy}em)`;
-      s.opacity = String(f);
-      break;
-    }
-    case "zoom": {
-      const sc = incoming ? 0.8 + 0.2 * f : 1 + 0.2 * (1 - f);
-      s.transform = `scale(${sc})`;
-      s.opacity = String(f);
-      break;
-    }
-    default:
-      s.opacity = String(f);
-  }
+  s.opacity = String(word.opacity);
+  if (hasLink) return;
+  if (word.diffuse) s.filter = `url(#${FILTER_ID}) blur(${word.blurPx}px)`;
+  else if (word.blurPx > 0.05) s.filter = `blur(${word.blurPx}px)`;
+  if (word.translateYEm) s.transform = `translateY(${word.translateYEm}em)`;
+  else if (word.scale !== 1) s.transform = `scale(${word.scale})`;
 }
 
 export function createMorph(spec: Spec, d: Defaults): MorphHandle {
@@ -195,16 +158,8 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
   });
 
   const n = spans.length;
-  const style = (): Style => (reducedMotion(elementWindow(el)) ? "crossfade" : spec.style ?? d.style ?? "diffuse");
-  const holdMs = (k: number) => Math.max(0, spec.items[k].hold ?? spec.hold ?? d.hold) * 1000;
-  const fadeMs = (k: number) => Math.max(0.05, spec.items[k].fade ?? spec.fade ?? d.fade) * 1000;
-
-  let i = 0;
-  let fading = false;
   let running = false;
   let dead = false;
-  let cancelHold = () => {};
-  let cancelFrame = () => {};
   let htmlSnap: Node[][] | null = null;
 
   const captureContent = () => {
@@ -265,67 +220,37 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
 
   const fitOnceAttached = whenAttached(el, fit);
 
-  const show = (k: number) => {
-    const st = style();
-    el.dataset.style = st;
-    place();
-    spans.forEach((s, idx) => {
-      apply(st, s, idx === k ? 1 : 0, true);
-      restore(s, idx);
-    });
-    fitOnceAttached.schedule();
-  };
-
-  const scheduleHold = (seed = false) => {
-    cancelHold();
-    cancelHold = requestElementTimeout(el, holdMs(i) * (seed ? Math.random() : 1), beginFade);
-  };
-
-  const beginFade = () => {
-    if (dead || !running) return;
-    fading = true;
-    const from = i;
-    const to = (i + 1) % n;
-    const dur = fadeMs(from);
-    const st = style();
-    el.dataset.style = st;
-    const t0 = elementWindow(el).performance.now();
-    const step = (now: number) => {
-      if (dead || !running) return;
-      const f = Math.min(1, (now - t0) / dur);
-      const e = st === "diffuse" ? f : f * f * (3 - 2 * f);
-      apply(st, spans[from], 1 - e, false);
-      apply(st, spans[to], e, true);
-      if (f < 1) {
-        cancelFrame = requestElementFrame(el, step);
-      } else {
-        i = to;
-        fading = false;
-        show(i);
-        scheduleHold();
-      }
-    };
-    cancelFrame = requestElementFrame(el, step);
-  };
+  const playback = playMorph({
+    count: n,
+    holdMs: (k) => holdOf(spec.hold, spec.items[k]?.hold, d),
+    fadeMs: (k) => fadeOf(spec.fade, spec.items[k]?.fade, d),
+    style: () => morphStyle(el, spec.style, d.style),
+    text: (k) => spec.items[k]?.text ?? "",
+    clock: morphClock(el),
+    onPaint: (paint) => {
+      el.dataset.style = paint.style;
+      place();
+      const hidden = wordPaint(paint.style, "", 0, true);
+      spans.forEach((s, idx) => {
+        const word =
+          idx === paint.outgoing.index ? paint.outgoing : idx === paint.incoming?.index ? paint.incoming : hidden;
+        paintSpan(s, word);
+        if (!paint.fading) restore(s, idx);
+      });
+      if (!paint.fading) fitOnceAttached.schedule();
+    },
+  });
 
   const play = () => {
     if (dead || running) return;
     running = true;
-    scheduleHold(true);
+    playback.start();
   };
 
   const pause = () => {
     running = false;
-    cancelHold();
-    cancelFrame();
-    if (fading) {
-      i = (i + 1) % n;
-      fading = false;
-      show(i);
-    }
+    playback.stop();
   };
-
-  show(0);
 
   let stopWatch = () => {};
   const playWhenVisible = whenAttached(el, () => {
@@ -345,13 +270,14 @@ export function createMorph(spec: Spec, d: Defaults): MorphHandle {
     destroy: () => {
       dead = true;
       pause();
+      playback.destroy();
       fitOnceAttached.cancel();
       playWhenVisible.cancel();
       stopWatch();
     },
     captureContent,
     refresh: () => {
-      show(i);
+      playback.reveal();
       if (n > 1) playWhenVisible.schedule();
     },
     syncVisibility: () => {

@@ -198,6 +198,10 @@ export default class MorphTextPlugin extends Plugin {
     return changed;
   }
 
+  private graphDefaults(): Defaults {
+    return { ...this.settings, separator: this.titleSep() };
+  }
+
   private titleSep(): string {
     const s = this.settings;
     return (s.distinctTitleSeparator ? s.titleSeparator : s.separator) || ";";
@@ -327,7 +331,7 @@ export default class MorphTextPlugin extends Plugin {
       window.clearTimeout(this.titleTimer);
       this.titleTimer = window.setTimeout(() => {
         this.scanTitles();
-        paintGraphLabels(this.app.workspace);
+        paintGraphLabels(this.app.workspace, this.graphDefaults());
       }, delay);
     };
 
@@ -348,7 +352,7 @@ export default class MorphTextPlugin extends Plugin {
     this.registerInterval(window.setInterval(() => {
       this.scanTitles(false);
       this.syncExplorerTitlePlayback();
-      paintGraphLabels(this.app.workspace);
+      paintGraphLabels(this.app.workspace, this.graphDefaults());
     }, 2000));
 
     this.register(() => explorerTitles.stop());
