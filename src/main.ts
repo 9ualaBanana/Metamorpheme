@@ -20,7 +20,6 @@ import {
   ALIGNS,
   createMorph,
   Defaults,
-  FILTER_ID,
   MorphHandle,
   parseSpec,
   rewriteMorphSeparators,
@@ -64,7 +63,6 @@ interface TitleState {
 
 export default class MorphTextPlugin extends Plugin {
   settings: MorphSettings = { ...DEFAULTS };
-  private svg?: SVGSVGElement;
 
   /** title elements currently showing morph text */
   private titles = new Map<HTMLElement, TitleState>();
@@ -82,13 +80,11 @@ export default class MorphTextPlugin extends Plugin {
       this.settings.distinctTitleSeparator = this.settings.titleSeparator !== this.settings.separator;
     }
     const loadedStyle = this.settings.style as string;
-    if (loadedStyle === "morph" || !(STYLES as readonly string[]).includes(this.settings.style)) {
-      this.settings.style = "diffuse";
-    }
+    if (loadedStyle === "blur") this.settings.style = "diffuse";
+    else if (!(STYLES as readonly string[]).includes(this.settings.style)) this.settings.style = "zoom";
     if (!(ALIGNS as readonly string[]).includes(this.settings.align)) this.settings.align = "center";
     this.appliedSeparator = this.settings.separator;
     this.appliedTitleSeparator = this.titleSep();
-    this.installFilter();
 
     // Reading view: inline {~ a | b ~}
     this.registerMarkdownPostProcessor((el, ctx) => {
@@ -129,7 +125,6 @@ export default class MorphTextPlugin extends Plugin {
     window.clearTimeout(this.titleTimer);
     this.restoreAllTitles();
     restoreGraphLabels(this.app.workspace);
-    this.svg?.remove();
   }
 
   async flushSeparatorRewrite() {
@@ -217,30 +212,6 @@ export default class MorphTextPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
-  }
-
-  private installFilter() {
-    const ns = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(ns, "svg");
-    svg.setAttribute("aria-hidden", "true");
-    svg.setAttribute("class", "morph-svg-filter");
-    const defs = document.createElementNS(ns, "defs");
-    const filter = document.createElementNS(ns, "filter");
-    filter.setAttribute("id", FILTER_ID);
-    filter.setAttribute("x", "-20%");
-    filter.setAttribute("y", "-60%");
-    filter.setAttribute("width", "140%");
-    filter.setAttribute("height", "220%");
-    filter.setAttribute("color-interpolation-filters", "sRGB");
-    const matrix = document.createElementNS(ns, "feColorMatrix");
-    matrix.setAttribute("in", "SourceGraphic");
-    matrix.setAttribute("type", "matrix");
-    matrix.setAttribute("values", "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 255 -140");
-    filter.appendChild(matrix);
-    defs.appendChild(filter);
-    svg.appendChild(defs);
-    document.body.appendChild(svg);
-    this.svg = svg;
   }
 
   private renderMorphsInElement(el: HTMLElement, ctx: MarkdownPostProcessorContext) {

@@ -2,7 +2,7 @@ import { watchElementVisibility, whenAttached } from "./animation-clock";
 import { fadeOf, holdOf, morphClock, morphStyle, playMorph, wordPaint, WordPaint } from "./morph-play";
 import type { OuterStyle } from "./outer-style";
 
-export const STYLES = ["zoom", "blur", "slide", "crossfade", "diffuse"] as const;
+export const STYLES = ["zoom", "diffuse", "slide", "crossfade"] as const;
 export type Style = (typeof STYLES)[number];
 export const ALIGNS = ["center", "justify", "left", "right"] as const;
 export type Align = (typeof ALIGNS)[number];
@@ -15,10 +15,9 @@ export const ALIGN_LABELS: Record<Align, string> = {
 
 export const STYLE_LABELS: Record<Style, string> = {
   zoom: "Zoom",
-  blur: "Blur focus",
-  crossfade: "Crossfade",
-  slide: "Slide up",
   diffuse: "Diffuse",
+  slide: "Slide up",
+  crossfade: "Crossfade",
 };
 
 export interface Defaults {
@@ -56,8 +55,6 @@ export interface MorphHandle {
   play: () => void;
 }
 
-export const FILTER_ID = "obsidian-morph-threshold";
-
 const OPTS = /^\s*(?:[a-z]+\s*=\s*[\w.]+\s*)+$/i;
 const ITEM = /^(.*?)\s+@\s*(\d*\.?\d+)?(?:\s*\/\s*(\d*\.?\d+))?\s*$/;
 
@@ -83,8 +80,8 @@ export function parseSpec(raw: string, separator: string): Spec {
       if (key === "hold") spec.hold = num(m[2]);
       else if (key === "fade") spec.fade = num(m[2]);
       else if (key === "style") {
-        const style = val === "morph" ? "diffuse" : val;
-        if ((STYLES as readonly string[]).includes(style)) spec.style = style as Style;
+        const named = val === "blur" ? "diffuse" : val;
+        if ((STYLES as readonly string[]).includes(named)) spec.style = named as Style;
       }
       else if (key === "align" && (ALIGNS as readonly string[]).includes(val)) spec.align = val as Align;
     }
@@ -126,8 +123,7 @@ function paintSpan(span: HTMLElement, word: WordPaint) {
   }
   s.opacity = String(word.opacity);
   if (hasLink) return;
-  if (word.diffuse) s.filter = `url(#${FILTER_ID}) blur(${word.blurPx}px)`;
-  else if (word.blurPx > 0.05) s.filter = `blur(${word.blurPx}px)`;
+  if (word.blurPx > 0.05) s.filter = `blur(${word.blurPx}px)`;
   if (word.translateYEm) s.transform = `translateY(${word.translateYEm}em)`;
   else if (word.scale !== 1) s.transform = `scale(${word.scale})`;
 }

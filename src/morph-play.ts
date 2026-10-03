@@ -18,7 +18,7 @@ export function morphClock(el: HTMLElement): MorphClock {
 export function morphStyle(el: HTMLElement, chosen: Style | undefined, fallback: Style | undefined): Style {
   const reduce = elementWindow(el).matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
   if (reduce) return "crossfade";
-  return chosen ?? fallback ?? "diffuse";
+  return chosen ?? fallback ?? "zoom";
 }
 
 export interface WordPaint {
@@ -28,7 +28,6 @@ export interface WordPaint {
   translateYEm: number;
   scale: number;
   blurPx: number;
-  diffuse: boolean;
 }
 
 export interface MorphPaint {
@@ -46,17 +45,9 @@ export function wordPaint(style: Style, text: string, f: number, incoming: boole
     translateYEm: 0,
     scale: 1,
     blurPx: 0,
-    diffuse: false,
   };
   if (f <= 0.001) return paint;
   if (style === "diffuse") {
-    const blur = Math.min(8 / f - 8, 100);
-    paint.opacity = Math.pow(f, 0.4);
-    paint.blurPx = blur > 0.01 ? blur : 0.6;
-    paint.diffuse = true;
-    return paint;
-  }
-  if (style === "blur") {
     const blur = (1 - f) * 12;
     paint.opacity = f;
     paint.blurPx = blur > 0.05 ? blur : 0;
@@ -130,7 +121,7 @@ export function playMorph(opts: {
       if (dead || !running) return;
       const f = Math.min(1, (now - t0) / dur);
       const st = style();
-      const e = st === "diffuse" ? f : f * f * (3 - 2 * f);
+      const e = f * f * (3 - 2 * f);
       emit({
         style: st,
         fading: true,

@@ -30,7 +30,7 @@ For {~ hold=2 fade=1 align=left style=crossfade ; thought @3 ; idea @1.5/0.4 ~} 
 - `word @H/F` — same, and the morph into the next word takes F seconds.
 - `word @/F` — only override the fade.
 - First segment `hold= fade= style= align=` sets defaults for that set (`align`: left | center | right | justify). `justify` stretches shorter morphemes to the width of the longest one in the set.
-- Styles: `zoom`, `blur`, `crossfade`, `slide`, `diffuse`. The default is chosen in plugin settings; `style=` overrides it for one set.
+- Styles: `zoom`, `diffuse`, `slide`, `crossfade`. The default is chosen in plugin settings; `style=` overrides it for one set.
 - Markdown inside a set still works, including a separate link on each morpheme: `{~ [[draft]] ; [[note]] ~}` or `{~ [one](url) ; [two](url) ~}`. Wrapping the whole set (`**{~ thought ; idea ~}**`) applies to every morpheme.
 
 
