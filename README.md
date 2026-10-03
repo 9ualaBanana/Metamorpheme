@@ -6,6 +6,8 @@
 
 Linguistically, we like to think words have strict definitions. But in actual communication, words function exactly like clouds of states. They exist in superposition until context forces them to resolve.
 
+![this-ain't-that](assets/this-aint-that.gif)
+
 ![Say/Mean what you mean/say](assets/say-what-you-mean.gif)
 
 ## Syntax
@@ -15,8 +17,6 @@ Default separator is `;`:
 ```
 {~ align=justify ; Prolix ; Verbose ; Diffuse ~} & {~ laconic ; concise ~}.
 {~ Con ; Sub ; Pre ~}text: text was never just text.
-{~ This ; that ~} ain't {~ that ; this ~} or is it ?
-What you {~ can't quite ; won't yet ; may never ~} say.
 {~ Unsaid ; Unspoken ; Untold ~} doesn't mean left out.
 {~ Leave ; Make ; Find ~} space for what one word couldn't carry.
 Not ur {~ typical ; regular ; boring ~} or.
