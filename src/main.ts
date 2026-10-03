@@ -109,7 +109,15 @@ export default class MorphTextPlugin extends Plugin {
     this.addCommand({
       id: "insert-morph-set",
       name: "Insert morph set",
-      editorCallback: (editor: Editor) => this.insertMorphSet(editor),
+      callback: () => {
+        const title = this.editableTitle();
+        if (title) {
+          this.insertMorphInTitle(title);
+          return;
+        }
+        const editor = this.app.workspace.activeEditor?.editor;
+        if (editor) this.insertMorphSet(editor);
+      },
     });
 
     this.addSettingTab(new MorphSettingTab(this.app, this));
@@ -455,52 +463,95 @@ export default class MorphTextPlugin extends Plugin {
 
   // ───────────────────────── commands ─────────────────────────
 
-  private wrapLine(raw: string): string {
+  private wrapLine(raw: string, sep: string): string {
     const trimmed = raw.trim();
     if (!trimmed || trimmed.startsWith("{~")) return raw;
     const parts = this.listParts(trimmed);
     if (!parts) return raw;
-    const sep = this.settings.separator || ";";
     const lead = raw.match(/^\s*/)?.[0] ?? "";
     const trail = raw.match(/\s*$/)?.[0] ?? "";
     return `${lead}{~ ${parts.join(` ${sep} `)} ~}${trail}`;
   }
 
-  private insertMorphSet(editor: Editor) {
-    const sel = editor.getSelection();
-    if (sel) {
-      if (sel.includes("\n")) {
-        const next = sel.split("\n").map((line) => this.wrapLine(line)).join("\n");
-        if (next !== sel) {
-          editor.replaceSelection(next);
-          return;
-        }
-      } else {
-        const converted = this.wrapLine(sel);
-        if (converted !== sel) {
-          editor.replaceSelection(converted);
-          return;
-        }
-      }
+  private morphText(selected: string, sep: string, singleLine = false): { text: string; cursor: number | null } {
+    const marker = sep.trim() || ";";
+    if (selected && !singleLine && selected.includes("\n")) {
+      const next = selected.split("\n").map((line) => this.wrapLine(line, marker)).join("\n");
+      if (next !== selected) return { text: next, cursor: null };
+    } else if (selected) {
+      const converted = this.wrapLine(selected, marker);
+      if (converted !== selected) return { text: converted, cursor: null };
     }
-    this.insertInline(editor);
+    if (selected) {
+      const parts = (selected.includes("\n") && !singleLine
+        ? selected.split("\n")
+        : selected.includes(marker)
+          ? selected.split(marker)
+          : selected.split(","))
+        .map((s) => s.trim());
+      if (parts.some((p) => p.length)) return { text: `{~ ${parts.join(` ${marker} `)} ~}`, cursor: null };
+    }
+    return { text: `{~  ${marker} ~}`, cursor: 3 };
   }
 
-  private insertInline(editor: Editor) {
-    const sep = this.settings.separator.trim() || ";";
+  private insertMorphSet(editor: Editor) {
     const sel = editor.getSelection();
-    if (sel) {
-      const parts = (sel.includes("\n") ? sel.split("\n") : sel.includes(sep) ? sel.split(sep) : sel.split(","))
-        .map((s) => s.trim());
-      if (parts.some((p) => p.length)) {
-        const items = parts;
-        editor.replaceSelection(`{~ ${items.join(` ${sep} `)} ~}`);
-        return;
-      }
-    }
+    const next = this.morphText(sel, this.settings.separator || ";");
     const from = editor.getCursor("from");
-    editor.replaceSelection(`{~  ${sep} ~}`);
-    editor.setCursor({ line: from.line, ch: from.ch + 3 });
+    editor.replaceSelection(next.text);
+    if (next.cursor != null) editor.setCursor({ line: from.line, ch: from.ch + next.cursor });
+  }
+
+  private editableTitle(): HTMLElement | null {
+    const docs: Document[] = [];
+    const add = (doc: Document | null | undefined) => {
+      if (doc && !docs.includes(doc)) docs.push(doc);
+    };
+    add(document);
+    add(this.app.workspace.activeLeaf?.view?.containerEl.ownerDocument);
+    for (const doc of docs) {
+      const active = doc.activeElement;
+      if (active && active.instanceOf(HTMLElement)) {
+        const title = this.titleField(active);
+        if (title) return title;
+      }
+      const node = doc.getSelection()?.anchorNode;
+      const host = node && node.instanceOf(HTMLElement) ? node : node?.parentElement;
+      const title = host ? this.titleField(host) : null;
+      if (title) return title;
+    }
+    return null;
+  }
+
+  private titleField(el: HTMLElement): HTMLElement | null {
+    const title = el.closest(".inline-title, .view-header-title, .nav-file-title-content, .nav-folder-title-content");
+    if (!title || !title.instanceOf(HTMLElement) || !title.isContentEditable) return null;
+    return title;
+  }
+
+  private insertMorphInTitle(el: HTMLElement) {
+    const doc = el.ownerDocument;
+    const view = doc.defaultView;
+    const sel = view?.getSelection();
+    if (!view || !sel) return;
+    if (!sel.rangeCount || !el.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+      const range = doc.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    const selected = sel.toString();
+    const next = this.morphText(selected, this.titleSep(), true);
+    if (!doc.execCommand("insertText", false, next.text)) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(doc.createTextNode(next.text));
+    }
+    if (next.cursor != null && sel.modify) {
+      for (let i = 0; i < next.text.length - next.cursor; i++) sel.modify("move", "backward", "character");
+    }
+    el.dispatchEvent(new InputEvent("input", { bubbles: true }));
   }
 
   private listParts(text: string): string[] | null {
