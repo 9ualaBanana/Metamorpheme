@@ -1,12 +1,12 @@
 # Metamorpheme
 
-**Superpose meanings that coincide.**
+**Superpose meanings that coincide. Equivocal by design.**
 
-![Say/Mean what you mean/say](assets/say-what-you-mean.gif)
-
-Vague by design.
+![what-you-define](assets/what-you-define.gif)
 
 Linguistically, we like to think words have strict definitions. But in actual communication, words function exactly like clouds of states. They exist in superposition until context forces them to resolve.
+
+![Say/Mean what you mean/say](vscode-file://vscode-app/c:/Users/9uala/OneDrive/Documents/ObsidianVaults/Gitsy/.obsidian/plugins/sememes/assets/say-what-you-mean.gif)
 
 ## Syntax
 
@@ -18,10 +18,8 @@ Default separator is `;`:
 {~ This ; that ~} ain't {~ that ; this ~} or is it ?
 What you {~ can't quite ; won't yet ; may never ~} say.
 {~ Unsaid ; Unspoken ; Untold ~} doesn't mean left out.
-
 {~ Leave ; Make ; Find ~} space for what one word couldn't carry.
 Not ur {~ typical ; regular ; boring ~} or.
-
 For {~ hold=2 fade=1 align=left style=crossfade ; thought @3 ; idea @1.5/0.4 ~} that still has {~ many ; too many ~} names.
 ```
 
@@ -30,10 +28,8 @@ For {~ hold=2 fade=1 align=left style=crossfade ; thought @3 ; idea @1.5/0.4 ~} 
 - `word @H/F` — same, and the morph into the next word takes F seconds.
 - `word @/F` — only override the fade.
 - First segment `hold= fade= style= align=` sets defaults for that set (`align`: left | center | right | justify). `justify` stretches shorter morphemes to the width of the longest one in the set.
-- Styles: `zoom`, `diffuse`, `slide`, `crossfade`. The default is chosen in plugin settings; `style=` overrides it for one set.
+- Styles: `zoom`, `diffuse`, `slide`, `crossfade`. The default is chosen in plugin settings; `style=` overrides it per set.
 - Markdown inside a set still works, including a separate link on each morpheme: `{~ [[draft]] ; [[note]] ~}` or `{~ [one](url) ; [two](url) ~}`. Wrapping the whole set (`**{~ thought ; idea ~}**`) applies to every morpheme.
-
-
 
 ## Commands
 
