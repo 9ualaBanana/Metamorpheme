@@ -6,7 +6,7 @@
 
 Linguistically, we like to think words have strict definitions. But in actual communication, words function exactly like clouds of states. They exist in superposition until context forces them to resolve.
 
-![Say/Mean what you mean/say](vscode-file://vscode-app/c:/Users/9uala/OneDrive/Documents/ObsidianVaults/Gitsy/.obsidian/plugins/sememes/assets/say-what-you-mean.gif)
+![Say/Mean what you mean/say](assets/say-what-you-mean.gif)
 
 ## Syntax
 
