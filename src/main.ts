@@ -30,6 +30,7 @@ import {
 interface MorphSettings extends Defaults {
   distinctTitleSeparator: boolean;
   titleSeparator: string;
+  mobileToolbarPlaced: boolean;
 }
 
 const DEFAULTS: MorphSettings = {
@@ -40,6 +41,7 @@ const DEFAULTS: MorphSettings = {
   separator: ";",
   distinctTitleSeparator: false,
   titleSeparator: ";",
+  mobileToolbarPlaced: false,
 };
 
 const INLINE_TITLE_SEL = ".inline-title";
@@ -105,6 +107,7 @@ export default class MorphTextPlugin extends Plugin {
     this.addCommand({
       id: "insert-morph-set",
       name: "Insert morph set",
+      icon: "lucide-brain-circuit",
       callback: () => {
         const title = this.editableTitle();
         if (title) {
@@ -117,6 +120,7 @@ export default class MorphTextPlugin extends Plugin {
     });
 
     this.addSettingTab(new MorphSettingTab(this.app, this));
+    await this.placeOnMobileToolbar();
 
     this.setupTitles();
   }
@@ -212,6 +216,36 @@ export default class MorphTextPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+
+  private async placeOnMobileToolbar() {
+    const id = "metamorpheme:insert-morph-set";
+    const vault = this.app.vault as typeof this.app.vault & {
+      getConfig(key: string): unknown;
+      setConfig(key: string, value: unknown): void;
+    };
+    const current = vault.getConfig("mobileToolbarCommands");
+    const commands = Array.isArray(current) ? current.filter((item): item is string => typeof item === "string") : [];
+    if (!commands.length) return;
+    const at = commands.indexOf(id);
+    const parkedBeforeBold = at >= 0 && commands[at + 1] === "editor:toggle-bold";
+    if (at < 0 && this.settings.mobileToolbarPlaced) return;
+    if (this.settings.mobileToolbarPlaced && !parkedBeforeBold) return;
+    const next = commands.filter((item) => item !== id);
+    const linkAt = next.indexOf("editor:insert-link");
+    next.splice(linkAt >= 0 ? linkAt + 1 : next.length, 0, id);
+    vault.setConfig("mobileToolbarCommands", next);
+    const bar = (this.app as App & {
+      mobileToolbar?: { lastCommandIds?: string; isVisible?: boolean; compileToolbar?: () => void };
+    }).mobileToolbar;
+    if (bar?.compileToolbar) {
+      bar.lastCommandIds = "";
+      if (bar.isVisible) bar.compileToolbar();
+    }
+    if (!this.settings.mobileToolbarPlaced) {
+      this.settings.mobileToolbarPlaced = true;
+      await this.saveSettings();
+    }
   }
 
   private renderMorphsInElement(el: HTMLElement, ctx: MarkdownPostProcessorContext) {

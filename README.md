@@ -37,5 +37,5 @@ For {~ hold=2 fade=1 align=left style=crossfade ; thought @3 ; idea @1.5/0.4 ~} 
 
 ## Commands
 
-- **Insert morph set** — assign a hotkey in Settings → Hotkeys. If the selection is a slash or pipe list (`a|b|c` or `a/b/c`, including markdown links), it becomes `{~~}`. Otherwise it wraps the selection, or inserts an empty set.
+- **Insert morph set** — assign a hotkey in Settings → Hotkeys. On a phone it is also in the formatting row above the keyboard. If the selection is a slash or pipe list (`a|b|c` or `a/b/c`, including markdown links), it becomes `{~~}`. Otherwise it wraps the selection, or inserts an empty set.
 
