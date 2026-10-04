@@ -2,25 +2,43 @@
 
 **Superpose meanings that coincide. Equivocal by design.**
 
+![Say/Mean what you mean/say](assets/say-what-you-mean.gif)
+
 ![what-you-define](assets/what-you-define.gif)
 
-Linguistically, we like to think words have strict definitions. But in actual communication, words function exactly like clouds of states. They exist in superposition until context forces them to resolve.
+> Linguistically, we like to think words have strict definitions. But in actual communication, words function exactly like clouds of states. They exist in superposition until context forces them to resolve.
 
-![this-ain't-that](assets/this-aint-that.gif)
+  
 
-![Say/Mean what you mean/say](assets/say-what-you-mean.gif)
+
+One node ≠ one name. See the point ?
+
+![graph-view](assets/graph-view.gif)
+
+  
+
+
+Let them brain wave functions flow w/0 collapse w one tap of the button at your fingertips among tooltips 
+
+![this-ain't-that](assets/this-aint-that-w-keyboard.gif)
+
+  
+
+
+Align your means of expression within expanded limitations
+
+![verbose&laconic](assets/verbose&laconic.gif)
+
+  
+
+
+Preserve unique markdown per morpheme or wrap the whole metamorpheme in one
+![context-was-never-just-text](assets/context-was-never-just-tex.gif)
 
 ## Syntax
 
-Default separator is `;`:
-
 ```
-{~ align=justify ; Prolix ; Verbose ; Diffuse ~} & {~ laconic ; concise ~}.
-{~ Con ; Sub ; Pre ~}text: text was never just text.
-{~ Unsaid ; Unspoken ; Untold ~} doesn't mean left out.
-{~ Leave ; Make ; Find ~} space for what one word couldn't carry.
-Not ur {~ typical ; regular ; boring ~} or.
-For {~ hold=2 fade=1 align=left style=crossfade ; thought @3 ; idea @1.5/0.4 ~} that still has {~ many ; too many ~} names.
+{~ hold=2 fade=1 align=left style=crossfade ; Leave ; Make @1.5/0.4 ; Find @3 ~} space for what one word couldn't carry.
 ```
 
 - Keep a space after `{~` and before `~}`.
@@ -29,9 +47,4 @@ For {~ hold=2 fade=1 align=left style=crossfade ; thought @3 ; idea @1.5/0.4 ~} 
 - `word @/F` — only override the fade.
 - First segment `hold= fade= style= align=` sets defaults for that set (`align`: left | center | right | justify). `justify` stretches shorter morphemes to the width of the longest one in the set.
 - Styles: `zoom`, `diffuse`, `slide`, `crossfade`. The default is chosen in plugin settings; `style=` overrides it per set.
-- Markdown inside a set still works, including a separate link on each morpheme: `{~ [[draft]] ; [[note]] ~}` or `{~ [one](url) ; [two](url) ~}`. Wrapping the whole set (`**{~ thought ; idea ~}**`) applies to every morpheme.
-
-## Commands
-
-- **Insert morph set** — assign a hotkey in Settings → Hotkeys. On a phone it is also in the formatting row above the keyboard. If the selection is a slash or pipe list (`a|b|c` or `a/b/c`, including markdown links), it becomes `{~~}`. Otherwise it wraps the selection, or inserts an empty set.
 
