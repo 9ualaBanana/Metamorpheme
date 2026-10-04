@@ -29,6 +29,8 @@ Align your means of expression within expanded limitations
 
 ![verbose&laconic](assets/verbose&laconic.gif)
 
+![1984](assets/1984.gif)
+
   
 
 
