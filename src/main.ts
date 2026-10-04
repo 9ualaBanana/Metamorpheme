@@ -494,7 +494,12 @@ export default class MorphTextPlugin extends Plugin {
           ? selected.split(marker)
           : selected.split(","))
         .map((s) => s.trim());
-      if (parts.some((p) => p.length)) return { text: `{~ ${parts.join(` ${marker} `)} ~}`, cursor: null };
+      const filled = parts.filter((p) => p.length);
+      if (filled.length === 1) {
+        const text = `{~ ${filled[0]} ${marker}  ~}`;
+        return { text, cursor: text.length - 3 };
+      }
+      if (filled.length) return { text: `{~ ${filled.join(` ${marker} `)} ~}`, cursor: null };
     }
     return { text: `{~  ${marker} ~}`, cursor: 3 };
   }
@@ -562,6 +567,7 @@ export default class MorphTextPlugin extends Plugin {
   private listParts(text: string): string[] | null {
     const pipes: number[] = [];
     const slashes: number[] = [];
+    const commas: number[] = [];
     for (let i = 0; i < text.length; ) {
       const skip = this.skipListChunk(text, i);
       if (skip !== i) {
@@ -570,9 +576,11 @@ export default class MorphTextPlugin extends Plugin {
       }
       if (text[i] === "|" && text[i - 1] !== "\\") pipes.push(i);
       else if (text[i] === "/" && text[i - 1] !== "\\") slashes.push(i);
+      else if (text[i] === "," && text[i - 1] !== "\\") commas.push(i);
       i++;
     }
-    const seps = pipes.length ? pipes : slashes.filter((i) => this.slashIsListSep(text, i));
+    const slashSeps = slashes.filter((i) => this.slashIsListSep(text, i));
+    const seps = pipes.length ? pipes : slashSeps.length ? slashSeps : commas;
     if (!seps.length) return null;
     const parts: string[] = [];
     let prev = 0;
