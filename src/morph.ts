@@ -55,8 +55,9 @@ export interface MorphHandle {
   play: () => void;
 }
 
-const OPTS = /^\s*(?:[a-z]+\s*=\s*[\w.]+\s*)+$/i;
-const ITEM = /^(.*?)\s+@\s*(\d*\.?\d+)?(?:\s*\/\s*(\d*\.?\d+))?\s*$/;
+const TIME = /^@\s*(\d*\.?\d+)?(?:\s*%\s*(\d*\.?\d+))?\s*$/;
+const ITEM = /^(.*?)\s+@\s*(\d*\.?\d+)?(?:\s*%\s*(\d*\.?\d+))?\s*$/;
+const KV = /^([a-z]+)\s*=\s*([\w.]+)$/i;
 
 function num(v: string | undefined): number | undefined {
   if (v === undefined) return undefined;
@@ -64,28 +65,86 @@ function num(v: string | undefined): number | undefined {
   return isFinite(n) ? n : undefined;
 }
 
-/**
- * Parses the inside of `{~ ... ~}`:
- *   [hold=2 fade=1 style=slide align=left |] word [@hold[/fade]] | word [@hold[/fade]] | ...
- */
-export function parseSpec(raw: string, separator: string): Spec {
-  const parts = raw.split(separator).map((p) => p.replace(/\\\s*$/, "").trim());
-  const spec: Spec = { items: [] };
+function styleName(raw: string): Style | undefined {
+  const named = raw.toLowerCase() === "blur" ? "diffuse" : raw.toLowerCase();
+  if ((STYLES as readonly string[]).includes(named)) return named as Style;
+  return undefined;
+}
 
-  if (parts.length && OPTS.test(parts[0])) {
-    const opts = parts.shift() as string;
-    for (const m of opts.matchAll(/([a-z]+)\s*=\s*([\w.]+)/gi)) {
-      const key = m[1].toLowerCase();
-      const val = m[2].toLowerCase();
-      if (key === "hold") spec.hold = num(m[2]);
-      else if (key === "fade") spec.fade = num(m[2]);
-      else if (key === "style") {
-        const named = val === "blur" ? "diffuse" : val;
-        if ((STYLES as readonly string[]).includes(named)) spec.style = named as Style;
-      }
-      else if (key === "align" && (ALIGNS as readonly string[]).includes(val)) spec.align = val as Align;
-    }
+function alignMark(tok: string): Align | undefined {
+  if (tok === "><") return "center";
+  if (tok === "<>") return "justify";
+  if (tok === "<") return "left";
+  if (tok === ">") return "right";
+  const named = tok.toLowerCase();
+  if ((ALIGNS as readonly string[]).includes(named)) return named as Align;
+  return undefined;
+}
+
+function timed(raw: string): { hold?: number; fade?: number } | undefined {
+  const m = TIME.exec(raw);
+  if (!m) return undefined;
+  const hold = num(m[1]);
+  const fade = num(m[2]);
+  if (hold === undefined && fade === undefined) return undefined;
+  return { hold, fade };
+}
+
+function applyOptToken(spec: Spec, tok: string): boolean {
+  const t = timed(tok);
+  if (t) {
+    if (t.hold !== undefined) spec.hold = t.hold;
+    if (t.fade !== undefined) spec.fade = t.fade;
+    return true;
   }
+  const align = alignMark(tok);
+  if (align) {
+    spec.align = align;
+    return true;
+  }
+  const style = styleName(tok);
+  if (style) {
+    spec.style = style;
+    return true;
+  }
+  const kv = KV.exec(tok);
+  if (!kv) return false;
+  const key = kv[1].toLowerCase();
+  const val = kv[2].toLowerCase();
+  if (key === "hold") spec.hold = num(kv[2]);
+  else if (key === "fade") spec.fade = num(kv[2]);
+  else if (key === "style") {
+    const named = styleName(val);
+    if (named) spec.style = named;
+  } else if (key === "align") {
+    const mark = alignMark(kv[2]) ?? ((ALIGNS as readonly string[]).includes(val) ? (val as Align) : undefined);
+    if (mark) spec.align = mark;
+  } else return false;
+  return true;
+}
+
+function takeOpts(inner: string, spec: Spec): boolean {
+  const toks = inner.split(/\s+/).filter(Boolean);
+  if (!toks.length) return false;
+  const next: Spec = { items: [] };
+  for (const tok of toks) {
+    if (!applyOptToken(next, tok)) return false;
+  }
+  spec.hold = next.hold;
+  spec.fade = next.fade;
+  spec.style = next.style;
+  spec.align = next.align;
+  return true;
+}
+
+export function parseSpec(raw: string, separator: string): Spec {
+  const spec: Spec = { items: [] };
+  let body = raw;
+  const wrapped = /^\s*\$\s*([\s\S]*?)\s*\$\s*/.exec(raw);
+  if (wrapped && takeOpts(wrapped[1].trim(), spec)) {
+    body = raw.slice(wrapped[0].length);
+  }
+  const parts = body.split(separator).map((p) => p.replace(/\\\s*$/, "").trim());
 
   for (const p of parts) {
     if (!p) {

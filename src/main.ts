@@ -337,7 +337,7 @@ export default class MorphTextPlugin extends Plugin {
   // ───────────────────────── note titles ─────────────────────────
   //
   // A note named  "Say {~ Mean ; Do ; Ship ~}"  shows morphing text in its title.
-  // Per-word timing is limited to "@hold". hold= / fade= / style= go in the first segment.
+  // Per-word timing is `@H`, `@H%F`, or `@%F`. Set overrides are `$ @H%F >< zoom $` then the first morpheme.
 
   private setupTitles() {
     const schedule = (delay = 120) => {
@@ -668,7 +668,7 @@ class MorphSettingTab extends PluginSettingTab {
       },
       {
         name: "Alignment",
-        desc: "How morphemes sit in the space of the longest one. Override per set with align=.",
+        desc: "How morphemes sit in the space of the longest one. Override per set with $ >< | <> | < | > $ or $ center | justify | left | right $.",
         control: { type: "dropdown", key: "align", options: alignOptions },
       },
       {
