@@ -23,6 +23,10 @@ Let them brain wave functions flow w/0 collapse w one tap of the button at your 
 
 ![this-ain't-that](assets/this-aint-that.gif)
 
+Explore wider range of meanings at glance
+
+![file-explorer](assets/file-explorer.gif)
+
 ## Syntax
 
 ```
