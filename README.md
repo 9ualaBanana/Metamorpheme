@@ -2,28 +2,26 @@
 
 **Superpose meanings that coincide. Equivocal by design.**
 
-![Say/Mean what you mean/say](assets/say-what-you-mean.gif)
-
 ![what-you-define](assets/what-you-define.gif)
 
 > Linguistically, we like to think words have strict definitions. But in actual communication, words function exactly like clouds of states. They exist in superposition until context forces them to resolve.
-
-One node ≠ one name. See the point ?
-
-![graph-view](assets/graph-view.gif)
-
-Let them brain wave functions flow w/0 collapse w one tap of the button at your fingertips among tooltips 
-
-![this-ain't-that](assets/this-aint-that-w-keyboard.gif)
 
 Align your means of expression within expanded limitations
 
 ![verbose&laconic](assets/verbose&laconic.gif)
 
-![1984](assets/1984.gif)
+One node ≠ one name. See the point ?
+
+![graph-view](assets/graph-view.gif)
 
 Preserve unique markdown per morpheme or wrap the whole metamorpheme in one
 ![context-was-never-just-text](assets/context-was-never-just-tex.gif)
+
+![1984](assets/1984.gif)
+
+Let them brain wave functions flow w/0 collapse w one tap of the button at your fingertips among tooltips 
+
+![this-ain't-that](assets/this-aint-that.gif)
 
 ## Syntax
 
