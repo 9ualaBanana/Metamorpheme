@@ -1,14 +1,24 @@
 # Metamorpheme
 
-**Superpose meanings that coincide. Equivocal by design.**
+Align your means of expression within expanded limitations
 
-![what-you-define](assets/what-you-define.gif)
+![verbose&laconic](vscode-file://vscode-app/c:/Users/9uala/OneDrive/Documents/ObsidianVaults/Gitsy/.obsidian/plugins/sememes/assets/verbose&laconic.gif)
+
+### Use it when
+
+- **You write with layered meaning.** Poetry, fiction and worldbuilding often depend on words that mean two things at once. Show both readings in the same place.
+- **A concept has no single name.** Title a note with the several words that each capture part of it, whether a feeling, a theme or a half-formed idea, so the note carries all of them instead of forcing you to pick one.
+- **You’re choosing between words.** Keep candidate names for a project, chapter or character cycling in the title while you decide, or keep near-synonyms side by side while editing a sentence.
+- **Words don’t translate cleanly.** Show a term in two or three languages together, or a word next to its closest equivalents, for language learning, translation work or multilingual notes.
+- **A term means different things in different contexts.** In a glossary or study notes, let one entry show its senses (say, a word in physics and in everyday speech) instead of a single definition that hides the rest.
+
+
 
 > Linguistically, we like to think words have strict definitions. But in actual communication, words function exactly like clouds of states. They exist in superposition until context forces them to resolve.
 
-Align your means of expression within expanded limitations
+![what-you-define](assets/what-you-define.gif)
 
-![verbose&laconic](assets/verbose&laconic.gif)
+
 
 One node ≠ one name. See the point ?
 
@@ -16,6 +26,8 @@ One node ≠ one name. See the point ?
 
 Preserve unique markdown per morpheme or wrap the whole metamorpheme in one
 ![context-was-never-just-text](assets/context-was-never-just-tex.gif)
+
+Superpose meanings that coincide. Equivocal by design.
 
 ![1984](assets/1984.gif)
 
