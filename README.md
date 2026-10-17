@@ -2,7 +2,7 @@
 
 Align your means of expression within expanded limitations
 
-![verbose&laconic](vscode-file://vscode-app/c:/Users/9uala/OneDrive/Documents/ObsidianVaults/Gitsy/.obsidian/plugins/sememes/assets/verbose&laconic.gif)
+![verbose&laconic](assets/verbose&laconic.gif)
 
 ### Use it when
 
